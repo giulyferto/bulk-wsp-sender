@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Prisma generated client
+node_modules/.prisma/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# WhatsApp session data
+wa-sessions/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
