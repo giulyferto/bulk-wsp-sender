@@ -1,4 +1,5 @@
 allowBuilds:
+  '@firebase/util': true
   '@prisma/engines': true
   '@whiskeysockets/baileys': false
   bufferutil: false
