@@ -11,9 +11,10 @@ interface Campaign {
 }
 
 const statusBadge: Record<string, { label: string; cls: string; pulse?: boolean }> = {
-  done:      { label: "Completada", cls: "bg-accent-muted text-accent" },
-  cancelled: { label: "Cancelada",  cls: "bg-gray-100 text-gray-400" },
-  sending:   { label: "En curso",   cls: "bg-blue-50 text-blue-600", pulse: true },
+  done:       { label: "Completada", cls: "bg-accent-muted text-accent" },
+  incomplete: { label: "Incompleta", cls: "bg-amber-50 text-amber-600" },
+  cancelled:  { label: "Cancelada",  cls: "bg-gray-100 text-gray-400" },
+  sending:    { label: "En curso",   cls: "bg-blue-50 text-blue-600", pulse: true },
 };
 
 function ChevronRight() {

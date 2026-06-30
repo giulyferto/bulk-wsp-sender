@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { WhatsAppPreview } from "@/components/WhatsAppPreview";
 
 type Status = "PENDING" | "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED" | "CANCELLED";
-type Phase = "form" | "sending" | "done" | "cancelled";
+type Phase = "connecting" | "sending" | "done" | "cancelled" | "error";
 
 interface ContactEntry {
   id: string;
@@ -13,65 +14,34 @@ interface ContactEntry {
   status: Status;
 }
 
-interface ContactList {
-  id: string;
-  name: string;
-  _count: { members: number };
-}
-
-interface Template {
-  id: string;
-  name: string;
-  body: string;
-  imageUrls: string[];
-}
-
 const statusConfig: Record<Status, { label: string; cls: string; dot: string; spinner?: boolean }> = {
-  PENDING:   { label: "Pendiente",  cls: "bg-gray-100 text-gray-500",    dot: "bg-gray-300" },
-  SENDING:   { label: "Enviando…",  cls: "bg-blue-50 text-blue-600",     dot: "bg-blue-500", spinner: true },
-  SENT:      { label: "Enviado",    cls: "bg-blue-50 text-blue-600",     dot: "bg-blue-500" },
-  DELIVERED: { label: "Entregado",  cls: "bg-amber-50 text-amber-600",   dot: "bg-amber-500" },
-  READ:      { label: "Leído",      cls: "bg-accent-muted text-accent",  dot: "bg-accent" },
-  FAILED:    { label: "Fallido",    cls: "bg-red-50 text-red-500",       dot: "bg-red-400" },
-  SKIPPED:   { label: "Salteado",   cls: "bg-gray-100 text-gray-400",    dot: "bg-gray-300" },
-  CANCELLED: { label: "Cancelado",  cls: "bg-gray-100 text-gray-400",    dot: "bg-gray-300" },
+  PENDING:   { label: "Pendiente",  cls: "bg-gray-100 text-gray-500",   dot: "bg-gray-300" },
+  SENDING:   { label: "Enviando…",  cls: "bg-blue-50 text-blue-600",    dot: "bg-blue-500", spinner: true },
+  SENT:      { label: "Enviado",    cls: "bg-blue-50 text-blue-600",    dot: "bg-blue-500" },
+  DELIVERED: { label: "Entregado",  cls: "bg-amber-50 text-amber-600",  dot: "bg-amber-500" },
+  READ:      { label: "Leído",      cls: "bg-accent-muted text-accent", dot: "bg-accent" },
+  FAILED:    { label: "Fallido",    cls: "bg-red-50 text-red-500",      dot: "bg-red-400" },
+  SKIPPED:   { label: "Salteado",   cls: "bg-gray-100 text-gray-400",   dot: "bg-gray-300" },
+  CANCELLED: { label: "Cancelado",  cls: "bg-gray-100 text-gray-400",   dot: "bg-gray-300" },
 };
 
-const inputCls =
-  "border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors duration-150 w-full";
+export default function RetryPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
 
-export default function SendPage() {
-  const [lists, setLists] = useState<ContactList[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [listId, setListId] = useState("");
-  const [message, setMessage] = useState("");
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const [phase, setPhase] = useState<Phase>("form");
+  const [phase, setPhase] = useState<Phase>("connecting");
   const [contacts, setContacts] = useState<ContactEntry[]>([]);
-  const [campaignId, setCampaignId] = useState("");
+  const [body, setBody] = useState("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [skippingIds, setSkippingIds] = useState<Set<string>>(new Set());
   const [skipConfirmedIds, setSkipConfirmedIds] = useState<Set<string>>(new Set());
+  const started = useRef(false);
 
-  const loadLists = useCallback(async () => {
-    const res = await fetch("/api/lists");
-    setLists(await res.json());
-  }, []);
-
-  const loadTemplates = useCallback(async () => {
-    const res = await fetch("/api/templates");
-    if (res.ok) setTemplates(await res.json());
-  }, []);
-
-  useEffect(() => {
-    loadLists();
-    loadTemplates();
-  }, [loadLists, loadTemplates]);
-
+  // Countdown tick
   useEffect(() => {
     if (countdown === null || countdown <= 0) return;
     const t = setTimeout(() => setCountdown((c) => (c !== null && c > 0 ? c - 1 : null)), 1000);
@@ -85,7 +55,8 @@ export default function SendPage() {
   function handleEvent(event: Record<string, unknown>) {
     switch (event.type) {
       case "start":
-        setCampaignId(event.campaignId as string);
+        setBody(event.body as string ?? "");
+        setImageUrls(event.imageUrls as string[] ?? []);
         setContacts(event.contacts as ContactEntry[]);
         setPhase("sending");
         break;
@@ -107,65 +78,57 @@ export default function SendPage() {
         setCountdown(null);
         setPhase("cancelled");
         break;
+      case "error":
+        setErrorMsg((event.message as string) ?? "Error desconocido");
+        setPhase("error");
+        break;
     }
   }
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
 
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listId, message, imageUrls }),
-    });
+    fetch(`/api/campaigns/${id}/retry`, { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(() => ({}));
+          setErrorMsg(data.error ?? "Error al iniciar el reintento");
+          setPhase("error");
+          return;
+        }
 
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Error al enviar");
-      setLoading(false);
-      return;
-    }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            handleEvent(JSON.parse(line.slice(6)));
-          } catch {
-            // skip malformed line
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try { handleEvent(JSON.parse(line.slice(6))); } catch {}
           }
         }
-      }
-    } catch (err) {
-      console.error("[SSE] stream error:", err);
-    }
-
-    setLoading(false);
-  }
+      })
+      .catch(() => {
+        setErrorMsg("No se pudo conectar con el servidor");
+        setPhase("error");
+      });
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCancel() {
-    if (!campaignId) return;
     setCancelling(true);
-    await fetch(`/api/campaigns/${campaignId}/cancel`, { method: "POST" });
+    await fetch(`/api/campaigns/${id}/cancel`, { method: "POST" });
   }
 
   async function handleSkip(contactId: string) {
-    if (!campaignId) return;
     setSkippingIds((prev) => new Set(prev).add(contactId));
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/skip`, {
+      const res = await fetch(`/api/campaigns/${id}/skip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contactId }),
@@ -181,135 +144,6 @@ export default function SendPage() {
     }
   }
 
-  const selectedList = lists.find((l) => l.id === listId);
-
-  // ── Form ──────────────────────────────────────────────────────────────────
-  if (phase === "form") {
-    return (
-      <div>
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">Enviar campaña</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Los mensajes se envían con un intervalo aleatorio de 3 a 10 segundos entre cada uno
-          </p>
-        </div>
-
-        <div className="flex gap-10 items-start">
-          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <form onSubmit={handleSend} className="space-y-5">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                  Lista de destinatarios
-                </label>
-                <select
-                  value={listId}
-                  onChange={(e) => setListId(e.target.value)}
-                  required
-                  className={inputCls}
-                >
-                  <option value="">Elegir una lista…</option>
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name} — {l._count.members} contactos
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {templates.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                    Plantilla (opcional)
-                  </label>
-                  <select
-                    className={inputCls}
-                    defaultValue=""
-                    onChange={(e) => {
-                      const tpl = templates.find((t) => t.id === e.target.value);
-                      if (tpl) {
-                        setMessage(tpl.body);
-                        setImageUrls(tpl.imageUrls ?? []);
-                      } else {
-                        setImageUrls([]);
-                      }
-                    }}
-                  >
-                    <option value="">Elegir plantilla…</option>
-                    {templates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                        {t.imageUrls?.length > 0 ? ` · ${t.imageUrls.length} img` : ""}
-                      </option>
-                    ))}
-                  </select>
-
-                  {imageUrls.length > 0 && (
-                    <div className="mt-2 flex gap-2">
-                      {imageUrls.map((url, i) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={i}
-                          src={url}
-                          alt=""
-                          className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                        />
-                      ))}
-                      <span className="text-xs text-gray-400 self-center">
-                        {imageUrls.length === 1 ? "1 imagen adjunta" : `${imageUrls.length} imágenes adjuntas`}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs font-medium text-gray-500">Mensaje</label>
-                  <span className="text-xs text-gray-300 tabular-nums">{message.length} car.</span>
-                </div>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  required
-                  rows={6}
-                  className={`${inputCls} resize-none leading-relaxed`}
-                  placeholder="Escribí tu mensaje acá…"
-                />
-              </div>
-
-              {selectedList && (
-                <div className="bg-accent-muted rounded-lg px-4 py-3 text-sm text-green-800">
-                  Se enviará a{" "}
-                  <strong>{selectedList._count.members} contactos</strong> de la lista &ldquo;
-                  {selectedList.name}&rdquo;.
-                </div>
-              )}
-
-              {error && (
-                <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-600">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-accent hover:bg-accent-dark text-white py-2.5 rounded-lg font-medium text-sm transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Iniciando…" : "Enviar campaña"}
-              </button>
-            </form>
-          </div>
-
-          <div className="hidden lg:block flex-shrink-0 pt-2">
-            <WhatsAppPreview body={message} imageUrls={imageUrls} label="Vista previa" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Live / done / cancelled view ──────────────────────────────────────────
   const isSending = phase === "sending";
   const sentCount = contacts.filter(
     (c) => c.status === "SENT" || c.status === "DELIVERED" || c.status === "READ"
@@ -322,26 +156,49 @@ export default function SendPage() {
     (c) => c.status === "SENT" || c.status === "DELIVERED" || c.status === "READ"
   );
 
+  if (phase === "connecting") {
+    return (
+      <div className="flex items-center justify-center pt-20 gap-3 text-sm text-gray-400">
+        <span className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+        Iniciando reintento…
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="text-center pt-12">
+        <p className="text-sm text-red-400 mb-3">{errorMsg}</p>
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-accent hover:underline"
+        >
+          Volver
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
             {isSending
-              ? "Enviando campaña…"
+              ? "Reintentando campaña…"
               : phase === "done"
-              ? allSent ? "Campaña enviada" : "Campaña finalizada con errores"
-              : "Campaña cancelada"}
+              ? allSent ? "Reintento completado" : "Reintento finalizado con errores"
+              : "Reintento cancelado"}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {selectedList?.name ?? "—"} &middot; {contacts.length} destinatarios
+            {contacts.length} destinatario{contacts.length !== 1 ? "s" : ""}
           </p>
         </div>
 
-        {(phase === "done" || phase === "cancelled") && campaignId && (
+        {(phase === "done" || phase === "cancelled") && (
           <a
-            href={`/campaigns/${campaignId}`}
-            className="flex-shrink-0 text-sm bg-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-accent-dark transition-colors"
+            href={`/campaigns/${id}`}
+            className="flex-shrink-0 text-sm bg-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-accent/90 transition-colors"
           >
             Ver campaña
           </a>
@@ -466,9 +323,9 @@ export default function SendPage() {
           )}
         </div>
 
-        {/* Phone preview — sticky alongside the contact list */}
+        {/* Phone preview */}
         <div className="hidden lg:block flex-shrink-0 sticky top-8">
-          <WhatsAppPreview body={message} imageUrls={imageUrls} label="Mensaje enviado" />
+          <WhatsAppPreview body={body} imageUrls={imageUrls} label="Mensaje enviado" />
         </div>
       </div>
     </div>

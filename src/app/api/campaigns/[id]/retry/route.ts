@@ -7,7 +7,7 @@ import { shouldCancel, shouldSkipContact, clearSignals } from "@/lib/whatsapp/ca
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function randomDelaySecs(): number {
-  return Math.floor(Math.random() * 8) + 3; // 3–10 s
+  return Math.floor(Math.random() * 8) + 3;
 }
 
 async function interruptibleSleep(ms: number, campaignId: string): Promise<void> {
@@ -18,7 +18,12 @@ async function interruptibleSleep(ms: number, campaignId: string): Promise<void>
   }
 }
 
-export async function POST(req: Request) {
+const RETRYABLE = new Set(["FAILED", "PENDING", "CANCELLED", "SKIPPED"]);
+
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
@@ -28,47 +33,43 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "WhatsApp no está conectado" }), { status: 409 });
   }
 
-  const body = await req.json();
-  const { listId, message, imageUrls = [] }: { listId: string; message: string; imageUrls: string[] } = body;
-  if (!listId || (!message && imageUrls.length === 0)) {
-    return new Response(JSON.stringify({ error: "listId y message (o imágenes) son requeridos" }), { status: 400 });
-  }
-
+  const { id: campaignId } = await params;
   const uid = session.user.id;
-  const listSnap = await db.doc(`users/${uid}/lists/${listId}`).get();
-  if (!listSnap.exists) {
-    return new Response(JSON.stringify({ error: "Lista no encontrada" }), { status: 404 });
+
+  const campaignSnap = await db.doc(`users/${uid}/campaigns/${campaignId}`).get();
+  if (!campaignSnap.exists) {
+    return new Response(JSON.stringify({ error: "Campaña no encontrada" }), { status: 404 });
   }
 
-  const listData = listSnap.data()!;
-  const memberIds: string[] = listData.memberIds ?? [];
+  const campaignData = campaignSnap.data()!;
+  const message: string = campaignData.body ?? "";
+  const imageUrls: string[] = campaignData.imageUrls ?? [];
 
-  const contacts = (
+  const deliveriesSnap = await db
+    .collection(`users/${uid}/campaigns/${campaignId}/deliveries`)
+    .get();
+
+  const retryable = deliveriesSnap.docs.filter((d) => RETRYABLE.has(d.data().status));
+
+  if (retryable.length === 0) {
+    return new Response(JSON.stringify({ error: "No hay mensajes para reintentar" }), { status: 400 });
+  }
+
+  const entries = (
     await Promise.all(
-      memberIds.map(async (contactId) => {
-        const snap = await db.doc(`users/${uid}/contacts/${contactId}`).get();
-        return snap.exists
-          ? { id: snap.id, ...(snap.data() as { name: string; phone: string }) }
-          : null;
+      retryable.map(async (d) => {
+        const contactSnap = await db.doc(`users/${uid}/contacts/${d.data().contactId}`).get();
+        if (!contactSnap.exists) return null;
+        const c = contactSnap.data() as { name: string; phone: string };
+        return { deliveryId: d.id, id: contactSnap.id, name: c.name, phone: c.phone };
       })
     )
-  ).filter((c): c is { id: string; name: string; phone: string } => c !== null);
+  ).filter((e): e is { deliveryId: string; id: string; name: string; phone: string } => e !== null);
 
-  const campaignRef = await db.collection(`users/${uid}/campaigns`).add({
-    listId,
-    listName: listData.name ?? "",
-    body: message,
-    imageUrls,
-    sentAt: new Date(),
-    status: "sending",
-  });
-  const campaignId = campaignRef.id;
-
-  // Create all delivery docs upfront so the start event can carry the full list
-  const deliveryRefs = await Promise.all(
-    contacts.map((c) =>
-      db.collection(`users/${uid}/campaigns/${campaignId}/deliveries`).add({
-        contactId: c.id,
+  // Reset to PENDING
+  await Promise.all(
+    entries.map((e) =>
+      db.doc(`users/${uid}/campaigns/${campaignId}/deliveries/${e.deliveryId}`).update({
         status: "PENDING",
         waMessageId: null,
         updatedAt: new Date(),
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     )
   );
 
-  const entries = contacts.map((c, i) => ({ ...c, deliveryId: deliveryRefs[i].id }));
+  await campaignSnap.ref.update({ status: "sending" });
 
   const encoder = new TextEncoder();
 
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
-          // client disconnected — keep sending to Firestore
+          // client disconnected
         }
       };
 
@@ -97,14 +98,9 @@ export async function POST(req: Request) {
       try {
         send({
           type: "start",
-          campaignId,
-          contacts: entries.map((e) => ({
-            id: e.id,
-            deliveryId: e.deliveryId,
-            name: e.name,
-            phone: e.phone,
-            status: "PENDING",
-          })),
+          body: message,
+          imageUrls,
+          contacts: entries.map((e) => ({ ...e, status: "PENDING" })),
         });
 
         for (let i = 0; i < entries.length; i++) {
@@ -116,11 +112,10 @@ export async function POST(req: Request) {
           if (shouldCancel(campaignId)) {
             cancelled = true;
             for (let j = i; j < entries.length; j++) {
-              const rem = entries[j];
               await db
-                .doc(`users/${uid}/campaigns/${campaignId}/deliveries/${rem.deliveryId}`)
+                .doc(`users/${uid}/campaigns/${campaignId}/deliveries/${entries[j].deliveryId}`)
                 .update({ status: "CANCELLED", updatedAt: new Date() });
-              send({ type: "status", contactId: rem.id, status: "CANCELLED" });
+              send({ type: "status", contactId: entries[j].id, status: "CANCELLED" });
             }
             send({ type: "cancelled" });
             break;
@@ -152,28 +147,22 @@ export async function POST(req: Request) {
             } else {
               let waMessageId: string | null = null;
 
-              // Always send text first
               if (message) {
                 const sent = await sock.sendMessage(info.jid, { text: message });
                 waMessageId = sent?.key.id ?? null;
               }
 
-              // Then send each image as a separate message
               for (let j = 0; j < imageUrls.length; j++) {
                 if (j > 0 || message) await sleep(600);
                 const sent = await sock.sendMessage(info.jid, { image: { url: imageUrls[j] } });
                 if (!waMessageId) waMessageId = sent?.key.id ?? null;
               }
 
-              await deliveryRef.update({
-                waMessageId,
-                status: "SENT",
-                updatedAt: new Date(),
-              });
+              await deliveryRef.update({ waMessageId, status: "SENT", updatedAt: new Date() });
               send({ type: "status", contactId: entry.id, status: "SENT" });
             }
           } catch (err) {
-            console.error(`[send] error enviando a ${entry.phone}:`, err);
+            console.error(`[retry] error enviando a ${entry.phone}:`, err);
             allSuccess = false;
             await deliveryRef.update({ status: "FAILED", updatedAt: new Date() });
             send({ type: "status", contactId: entry.id, status: "FAILED" });
@@ -187,19 +176,17 @@ export async function POST(req: Request) {
         }
 
         if (!cancelled) {
-          await campaignRef.update({ status: allSuccess ? "done" : "incomplete" });
-          send({ type: "done", campaignId });
+          await campaignSnap.ref.update({ status: allSuccess ? "done" : "incomplete" });
+          send({ type: "done" });
         } else {
-          await campaignRef.update({ status: "cancelled" });
+          await campaignSnap.ref.update({ status: "cancelled" });
         }
       } catch (err) {
-        console.error("[send stream] error:", err);
+        console.error("[retry stream] error:", err);
         send({ type: "error", message: "Error interno del servidor" });
       } finally {
         clearSignals(campaignId);
-        try {
-          controller.close();
-        } catch {}
+        try { controller.close(); } catch {}
       }
     },
   });

@@ -33,7 +33,6 @@ export async function GET(
       return {
         id: d.id,
         status: data.status,
-        waMessageId: data.waMessageId ?? null,
         contact: { name: contact.name, phone: contact.phone },
       };
     })
@@ -44,6 +43,7 @@ export async function GET(
   return NextResponse.json({
     id: campaignSnap.id,
     ...campaignData,
+    sentAt: campaignData.sentAt?.toDate?.()?.toISOString() ?? campaignData.sentAt,
     list: { name: listData?.name ?? "" },
     deliveries,
   });
