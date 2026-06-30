@@ -19,6 +19,17 @@ export default function ContactsPage() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [lists, setLists] = useState<{ id: string; name: string }[]>([]);
+  const [showListModal, setShowListModal] = useState(false);
+  const [pendingContactId, setPendingContactId] = useState<string | null>(null);
+  const [modalSearch, setModalSearch] = useState("");
+  const [selectedListIds, setSelectedListIds] = useState<Set<string>>(new Set());
+  const [addingToLists, setAddingToLists] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -29,26 +40,90 @@ export default function ContactsPage() {
     setContacts(await res.json());
   }, []);
 
+  const loadLists = useCallback(async () => {
+    const res = await fetch("/api/lists");
+    setLists(await res.json());
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadLists();
+  }, [load, loadLists]);
 
   async function addContact(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await fetch("/api/contacts", {
+    const res = await fetch("/api/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, phone }),
     });
+    const data = await res.json();
     setName("");
     setPhone("");
     setLoading(false);
     load();
+    if (lists.length > 0) {
+      setPendingContactId(data.id);
+      setSelectedListIds(new Set());
+      setModalSearch("");
+      setShowListModal(true);
+    }
   }
 
-  async function deleteContact(id: string) {
-    await fetch(`/api/contacts/${id}`, { method: "DELETE" });
+  async function deleteContact() {
+    if (!confirmDelete) return;
+    await fetch(`/api/contacts/${confirmDelete.id}`, { method: "DELETE" });
+    setConfirmDelete(null);
+    load();
+  }
+
+  function toggleList(listId: string) {
+    setSelectedListIds((prev) => {
+      const next = new Set(prev);
+      next.has(listId) ? next.delete(listId) : next.add(listId);
+      return next;
+    });
+  }
+
+  async function confirmAddToLists() {
+    if (!pendingContactId) return;
+    setAddingToLists(true);
+    await Promise.all(
+      [...selectedListIds].map((listId) =>
+        fetch(`/api/lists/${listId}/members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactId: pendingContactId }),
+        })
+      )
+    );
+    setAddingToLists(false);
+    setShowListModal(false);
+    setPendingContactId(null);
+  }
+
+  function startEdit(c: Contact) {
+    setEditingId(c.id);
+    setEditName(c.name);
+    setEditPhone(c.phone);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setSaving(true);
+    await fetch(`/api/contacts/${editingId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName, phone: editPhone }),
+    });
+    setSaving(false);
+    setEditingId(null);
     load();
   }
 
@@ -164,26 +239,164 @@ export default function ContactsPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
-            {filtered.map((c) => (
-              <div key={c.id} className="flex items-center px-5 py-3.5 gap-4 hover:bg-gray-50/50 transition-colors duration-100">
-                <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0 text-accent font-semibold text-xs">
-                  {c.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-gray-900">{c.name}</div>
-                  <div className="text-gray-400 text-xs font-mono mt-0.5">{c.phone}</div>
-                </div>
-                <button
-                  onClick={() => deleteContact(c.id)}
-                  className="text-xs text-gray-300 hover:text-red-500 transition-colors font-medium"
+            {filtered.map((c) =>
+              editingId === c.id ? (
+                <form
+                  key={c.id}
+                  onSubmit={saveEdit}
+                  className="flex items-center gap-2 px-5 py-3 bg-gray-50/80"
                 >
-                  Eliminar
-                </button>
-              </div>
-            ))}
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                    autoFocus
+                    className={`${inputCls} flex-1 min-w-24`}
+                    placeholder="Nombre"
+                  />
+                  <input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    required
+                    className={`${inputCls} flex-1 min-w-32 font-mono`}
+                    placeholder="+5491155556666"
+                  />
+                  <button type="submit" disabled={saving} className={btnPrimary}>
+                    {saving ? "…" : "Guardar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium px-2"
+                  >
+                    Cancelar
+                  </button>
+                </form>
+              ) : (
+                <div key={c.id} className="flex items-center px-5 py-3.5 gap-4 hover:bg-gray-50/50 transition-colors duration-100">
+                  <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0 text-accent font-semibold text-xs">
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-900">{c.name}</div>
+                    <div className="text-gray-400 text-xs font-mono mt-0.5">{c.phone}</div>
+                  </div>
+                  <button
+                    onClick={() => startEdit(c)}
+                    className="text-xs text-gray-300 hover:text-accent transition-colors font-medium"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(c)}
+                    className="text-xs text-gray-300 hover:text-red-500 transition-colors font-medium"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              )
+            )}
           </div>
         )}
       </div>
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Eliminar contacto</h2>
+            <p className="text-sm text-gray-500 mb-5">
+              ¿Seguro que querés eliminar a <strong className="text-gray-800">{confirmDelete.name}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors px-4 py-2"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={deleteContact}
+                className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showListModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          onClick={(e) => e.target === e.currentTarget && setShowListModal(false)}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm flex flex-col max-h-[80vh]">
+            <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-semibold text-gray-900">Agregar a listas</h2>
+                <button
+                  onClick={() => setShowListModal(false)}
+                  className="text-gray-300 hover:text-gray-500 transition-colors text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+              <input
+                type="search"
+                value={modalSearch}
+                onChange={(e) => setModalSearch(e.target.value)}
+                placeholder="Buscar lista…"
+                autoFocus
+                className={`${inputCls} w-full`}
+              />
+            </div>
+
+            <div className="overflow-y-auto flex-1 py-1">
+              {lists
+                .filter((l) => l.name.toLowerCase().includes(modalSearch.trim().toLowerCase()))
+                .map((l) => (
+                  <label
+                    key={l.id}
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedListIds.has(l.id)}
+                      onChange={() => toggleList(l.id)}
+                      className="accent-accent w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-800">{l.name}</span>
+                  </label>
+                ))}
+              {lists.filter((l) => l.name.toLowerCase().includes(modalSearch.trim().toLowerCase())).length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-6">Sin resultados</p>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowListModal(false)}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Omitir
+              </button>
+              <button
+                onClick={confirmAddToLists}
+                disabled={selectedListIds.size === 0 || addingToLists}
+                className={`${btnPrimary} min-w-32`}
+              >
+                {addingToLists
+                  ? "Guardando…"
+                  : selectedListIds.size === 0
+                  ? "Seleccioná una lista"
+                  : `Agregar a ${selectedListIds.size} lista${selectedListIds.size > 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
