@@ -60,6 +60,14 @@ function SendIcon() {
   );
 }
 
+function CampaignsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+      <path fillRule="evenodd" d="M2 2.5A.5.5 0 0 1 2.5 2h11a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 2 13.5v-11zM3 3v10h10V3H3zm2 2h6v1H5V5zm0 2.5h6v1H5v-1zm0 2.5h4v1H5v-1z" />
+    </svg>
+  );
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
@@ -99,8 +107,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/whatsapp" icon={<PhoneIcon />}>
             WhatsApp
           </NavLink>
-          <NavLink href="/send" icon={<SendIcon />} matchPrefixes={["/send", "/campaigns"]}>
+          <NavLink href="/send" icon={<SendIcon />}>
             Enviar
+          </NavLink>
+          <NavLink href="/campaigns" icon={<CampaignsIcon />}>
+            Campañas
           </NavLink>
         </nav>
 

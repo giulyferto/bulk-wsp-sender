@@ -11,6 +11,7 @@ import { db } from "@/lib/firebase";
 const globalForWA = globalThis as unknown as {
   waSocket: WASocket | undefined;
   waUserId: string | undefined;
+  waConnectionState: "open" | "close" | "connecting";
 };
 
 type DeliveryStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
@@ -24,9 +25,21 @@ function mapStatus(status: number): DeliveryStatus {
   return "PENDING";
 }
 
-export async function connectWhatsApp(userId: string): Promise<void> {
+/**
+ * @param allowReconnect - When false the socket will NOT auto-reconnect if it
+ *   closes before ever reaching "open" (used during the pairing flow so a
+ *   failed pairing attempt doesn't loop forever in "connecting" state).
+ *   Once the connection reaches "open" at least once, auto-reconnect is always
+ *   enabled regardless of this flag.
+ */
+export async function connectWhatsApp(userId: string, allowReconnect = true): Promise<void> {
+  const prev = globalForWA.waSocket;
   globalForWA.waSocket = undefined;
   globalForWA.waUserId = undefined;
+  globalForWA.waConnectionState = "connecting";
+  if (prev) {
+    try { prev.end(undefined); } catch {}
+  }
 
   const { state, saveCreds } = await loadDatabaseAuthState(userId);
 
@@ -42,22 +55,40 @@ export async function connectWhatsApp(userId: string): Promise<void> {
   globalForWA.waSocket = sock;
   globalForWA.waUserId = userId;
 
+  let wasOpen = false;
+
   sock.ev.on("connection.update", async (update) => {
+    if (globalForWA.waSocket !== sock) return;
+
     const { connection, lastDisconnect, qr } = update;
     if (qr) waEmitter.emit("qr", qr);
-    if (connection) waEmitter.emit("connection", connection);
+
+    if (connection) {
+      if (connection === "open") {
+        wasOpen = true;
+        globalForWA.waConnectionState = "open";
+      } else if (connection === "connecting") {
+        globalForWA.waConnectionState = "connecting";
+      } else if (connection === "close") {
+        globalForWA.waConnectionState = "close";
+      }
+      waEmitter.emit("connection", connection);
+    }
 
     if (connection === "close") {
       const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
       if (reason === DisconnectReason.loggedOut) {
-        // wipe Firestore session so next connect shows a fresh QR
         await db.doc(`whatsappSessions/${userId}`).delete();
         globalForWA.waSocket = undefined;
         globalForWA.waUserId = undefined;
+        globalForWA.waConnectionState = "close";
         waEmitter.emit("connection", "loggedOut");
-      } else {
-        connectWhatsApp(userId);
+      } else if (wasOpen || allowReconnect) {
+        // Reconnect if we had a live session before, or if caller allows it.
+        // Always pass true so subsequent reconnects keep auto-reconnecting.
+        connectWhatsApp(userId, true);
       }
+      // allowReconnect=false and never opened → stay closed; UI shows "Desconectado"
     }
   });
 
@@ -70,7 +101,6 @@ export async function connectWhatsApp(userId: string): Promise<void> {
     for (const { key, update } of updates) {
       if (update.status != null && key.id) {
         const dbStatus = mapStatus(update.status as number);
-        // Collection group query across all deliveries for this user
         const snap = await db
           .collectionGroup("deliveries")
           .where("waMessageId", "==", key.id)
@@ -99,13 +129,29 @@ export function getSocket(): WASocket | undefined {
 }
 
 export function isConnected(): boolean {
-  return !!globalForWA.waSocket;
+  return globalForWA.waConnectionState === "open";
+}
+
+export function getConnectionState(): "open" | "close" | "connecting" {
+  return globalForWA.waConnectionState ?? "close";
+}
+
+export function terminateSocket(): void {
+  const sock = globalForWA.waSocket;
+  globalForWA.waSocket = undefined;
+  globalForWA.waUserId = undefined;
+  globalForWA.waConnectionState = "close";
+  if (sock) {
+    try { sock.end(undefined); } catch {}
+  }
+  waEmitter.emit("connection", "close");
 }
 
 export async function disconnectWhatsApp(userId: string): Promise<void> {
   const sock = globalForWA.waSocket;
   globalForWA.waSocket = undefined;
   globalForWA.waUserId = undefined;
+  globalForWA.waConnectionState = "close";
   await db.doc(`whatsappSessions/${userId}`).delete();
   if (sock) {
     try {

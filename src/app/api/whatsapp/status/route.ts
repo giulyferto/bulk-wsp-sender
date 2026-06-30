@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { waEmitter } from "@/lib/whatsapp/sse-emitter";
-import { isConnected } from "@/lib/whatsapp/instance";
+import { getConnectionState } from "@/lib/whatsapp/instance";
 import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +16,8 @@ export async function GET(req: Request) {
         controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      // send current state immediately
-      send({ type: "connection", status: isConnected() ? "open" : "close" });
+      // send actual connection state immediately
+      send({ type: "connection", status: getConnectionState() });
 
       const onQr = async (qr: string) => {
         const dataUrl = await QRCode.toDataURL(qr);
