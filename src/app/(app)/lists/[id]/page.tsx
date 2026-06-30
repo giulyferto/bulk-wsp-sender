@@ -33,6 +33,10 @@ export default function ListDetailPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const pickerSearchRef = useRef<HTMLInputElement>(null);
 
   const loadList = useCallback(async () => {
@@ -81,6 +85,34 @@ export default function ListDetailPage() {
         )
       : (list?.members ?? []);
   }, [list, memberSearch]);
+
+  function startEditName() {
+    setNameValue(list?.name ?? "");
+    setEditingName(true);
+    setTimeout(() => nameInputRef.current?.focus(), 40);
+  }
+
+  async function saveEditName() {
+    const trimmed = nameValue.trim();
+    if (!trimmed || trimmed === list?.name) {
+      setEditingName(false);
+      return;
+    }
+    setSavingName(true);
+    const res = await fetch(`/api/lists/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (res.ok) {
+      await loadList();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "Error al guardar el nombre");
+    }
+    setSavingName(false);
+    setEditingName(false);
+  }
 
   function openPicker() {
     setPickerSearch("");
@@ -175,7 +207,48 @@ export default function ListDetailPage() {
       {/* Page header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 truncate">{list.name}</h1>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={nameInputRef}
+                type="text"
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveEditName();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                disabled={savingName}
+                className="text-2xl font-bold text-gray-900 border-b-2 border-accent bg-transparent focus:outline-none w-full min-w-0"
+              />
+              <button
+                onClick={saveEditName}
+                disabled={savingName}
+                className="text-xs font-medium text-accent hover:text-accent-dark disabled:opacity-50 transition-colors flex-shrink-0"
+              >
+                {savingName ? "Guardando…" : "Guardar"}
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h1 className="text-2xl font-bold text-gray-900 truncate">{list.name}</h1>
+              <button
+                onClick={startEditName}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600"
+                title="Editar nombre"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+                  <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H3v-2L11.5 2.5z" />
+                </svg>
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-3 mt-1.5">
             <span className="text-sm text-gray-500">
               {memberCount} / {LIST_CAPACITY} contactos

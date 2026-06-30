@@ -44,6 +44,14 @@ function PhoneIcon() {
   );
 }
 
+function TemplatesIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+      <path fillRule="evenodd" d="M4 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5L9.5 1H4zm5.5 1.5V5H13L9.5 2.5zM5 7.5h6v1H5v-1zm0 2.5h6v1H5v-1zm0 2.5h4v1H5V12z" />
+    </svg>
+  );
+}
+
 function SendIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
@@ -84,6 +92,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </NavLink>
           <NavLink href="/lists" icon={<ListIcon />}>
             Listas
+          </NavLink>
+          <NavLink href="/templates" icon={<TemplatesIcon />}>
+            Plantillas
           </NavLink>
           <NavLink href="/whatsapp" icon={<PhoneIcon />}>
             WhatsApp
