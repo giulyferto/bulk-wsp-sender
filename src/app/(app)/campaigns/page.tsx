@@ -10,10 +10,10 @@ interface Campaign {
   status: string;
 }
 
-const statusBadge: Record<string, { label: string; cls: string }> = {
+const statusBadge: Record<string, { label: string; cls: string; pulse?: boolean }> = {
   done:      { label: "Completada", cls: "bg-accent-muted text-accent" },
   cancelled: { label: "Cancelada",  cls: "bg-gray-100 text-gray-400" },
-  sending:   { label: "En curso",   cls: "bg-blue-50 text-blue-600" },
+  sending:   { label: "En curso",   cls: "bg-blue-50 text-blue-600", pulse: true },
 };
 
 function ChevronRight() {
@@ -22,6 +22,36 @@ function ChevronRight() {
       <path d="M6 3l5 5-5 5" />
     </svg>
   );
+}
+
+function groupByDate(campaigns: Campaign[]): { label: string; items: Campaign[] }[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const order: string[] = [];
+  const map: Record<string, Campaign[]> = {};
+
+  for (const c of campaigns) {
+    const d = new Date(c.sentAt);
+    d.setHours(0, 0, 0, 0);
+    const isToday = d.getTime() === today.getTime();
+    const isYesterday = d.getTime() === yesterday.getTime();
+    const key = isToday
+      ? "Hoy"
+      : isYesterday
+      ? "Ayer"
+      : new Date(c.sentAt).toLocaleDateString("es-AR", { day: "2-digit", month: "long" });
+
+    if (!map[key]) {
+      order.push(key);
+      map[key] = [];
+    }
+    map[key].push(c);
+  }
+
+  return order.map((label) => ({ label, items: map[label] }));
 }
 
 export default function CampaignsPage() {
@@ -41,6 +71,8 @@ export default function CampaignsPage() {
   if (loading) {
     return <div className="text-sm text-gray-400 pt-8 text-center">Cargando…</div>;
   }
+
+  const groups = groupByDate(campaigns);
 
   return (
     <div>
@@ -65,51 +97,56 @@ export default function CampaignsPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="divide-y divide-gray-50">
-            {campaigns.map((c) => {
-              const badge = statusBadge[c.status] ?? statusBadge.done;
-              const date = new Date(c.sentAt);
-              return (
-                <Link
-                  key={c.id}
-                  href={`/campaigns/${c.id}`}
-                  className="flex items-center px-5 py-4 gap-4 hover:bg-gray-50/50 transition-colors duration-100"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {c.listName || "Lista eliminada"}
-                      </span>
-                      <span
-                        className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}
+        <div className="space-y-6">
+          {groups.map(({ label, items }) => (
+            <div key={label}>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider px-1 mb-2">
+                {label}
+              </p>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="divide-y divide-gray-50">
+                  {items.map((c) => {
+                    const badge = statusBadge[c.status] ?? statusBadge.done;
+                    const date = new Date(c.sentAt);
+                    return (
+                      <Link
+                        key={c.id}
+                        href={`/campaigns/${c.id}`}
+                        className="flex items-center px-5 py-4 gap-4 hover:bg-gray-50/50 transition-colors duration-100"
                       >
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-400 truncate">
-                      {c.body.slice(0, 90)}{c.body.length > 90 ? "…" : ""}
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xs font-medium text-gray-500">
-                      {date.toLocaleDateString("es-AR", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  </div>
-                  <span className="text-gray-300 flex-shrink-0">
-                    <ChevronRight />
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-sm font-medium text-gray-900 truncate">
+                              {c.listName || "Lista eliminada"}
+                            </span>
+                            <span
+                              className={`flex-shrink-0 inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}
+                            >
+                              {badge.pulse && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                              )}
+                              {badge.label}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {c.body.slice(0, 90)}{c.body.length > 90 ? "…" : ""}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs font-medium text-gray-500 tabular-nums">
+                            {date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                        <span className="text-gray-300 flex-shrink-0">
+                          <ChevronRight />
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

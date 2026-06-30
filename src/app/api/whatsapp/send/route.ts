@@ -149,21 +149,17 @@ export async function POST(req: Request) {
             } else {
               let waMessageId: string | null = null;
 
-              if (imageUrls.length > 0) {
-                // First image carries the text caption
-                const first = await sock.sendMessage(info.jid, {
-                  image: { url: imageUrls[0] },
-                  caption: message || undefined,
-                });
-                waMessageId = first?.key.id ?? null;
-                // Additional images sent without caption
-                for (let j = 1; j < imageUrls.length; j++) {
-                  await sleep(600);
-                  await sock.sendMessage(info.jid, { image: { url: imageUrls[j] } });
-                }
-              } else {
+              // Always send text first
+              if (message) {
                 const sent = await sock.sendMessage(info.jid, { text: message });
                 waMessageId = sent?.key.id ?? null;
+              }
+
+              // Then send each image as a separate message
+              for (let j = 0; j < imageUrls.length; j++) {
+                if (j > 0 || message) await sleep(600);
+                const sent = await sock.sendMessage(info.jid, { image: { url: imageUrls[j] } });
+                if (!waMessageId) waMessageId = sent?.key.id ?? null;
               }
 
               await deliveryRef.update({

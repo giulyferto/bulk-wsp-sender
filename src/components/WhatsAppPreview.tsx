@@ -1,4 +1,5 @@
 "use client";
+import { type ReactNode } from "react";
 
 interface WhatsAppPreviewProps {
   body: string;
@@ -22,6 +23,33 @@ function MicIcon() {
   );
 }
 
+function Bubble({ children, isLast }: { children: ReactNode; isLast: boolean }) {
+  return (
+    <div style={{
+      background: "#dcf8c6",
+      borderRadius: "8px 8px 0 8px",
+      maxWidth: "88%",
+      alignSelf: "flex-end",
+      position: "relative",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+      marginTop: "4px",
+    }}>
+      {isLast && (
+        <div style={{
+          position: "absolute",
+          bottom: 0,
+          right: "-7px",
+          width: 0,
+          height: 0,
+          borderLeft: "7px solid #dcf8c6",
+          borderBottom: "8px solid transparent",
+        }} />
+      )}
+      {children}
+    </div>
+  );
+}
+
 export function WhatsAppPreview({ body, imageUrls = [], label }: WhatsAppPreviewProps) {
   const hasContent = body.trim() || imageUrls.length > 0;
   const now = new Date();
@@ -31,6 +59,9 @@ export function WhatsAppPreview({ body, imageUrls = [], label }: WhatsAppPreview
   const imageGrid = imageUrls.slice(0, 4);
   const gridCols = imageGrid.length === 1 ? "1fr" : "1fr 1fr";
   const imageHeight = imageGrid.length === 1 ? 120 : 64;
+
+  const totalBubbles = (truncatedBody ? 1 : 0) + imageGrid.length;
+  let bubbleIndex = 0;
 
   return (
     <div className="flex flex-col items-center select-none">
@@ -88,74 +119,59 @@ export function WhatsAppPreview({ body, imageUrls = [], label }: WhatsAppPreview
             backgroundSize: "16px 16px",
           }}>
             {hasContent ? (
-              <div style={{
-                background: "#dcf8c6",
-                borderRadius: "8px 8px 0 8px",
-                padding: imageGrid.length > 0 ? "3px 3px 6px" : "8px 10px 4px",
-                maxWidth: "88%",
-                alignSelf: "flex-end",
-                position: "relative",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-              }}>
-                {/* Bubble tail */}
-                <div style={{
-                  position: "absolute",
-                  bottom: 0,
-                  right: "-7px",
-                  width: 0,
-                  height: 0,
-                  borderLeft: "7px solid #dcf8c6",
-                  borderBottom: "8px solid transparent",
-                }} />
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {/* Text bubble first */}
+                {truncatedBody && (() => { const isLast = ++bubbleIndex === totalBubbles; return (
+                  <Bubble isLast={isLast}>
+                    <p style={{
+                      fontSize: "12px",
+                      color: "#1a1a1a",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      lineHeight: 1.45,
+                      margin: 0,
+                      padding: "8px 10px 4px",
+                    }}>
+                      {truncatedBody}
+                    </p>
+                    <p style={{
+                      textAlign: "right",
+                      fontSize: "10px",
+                      color: "rgba(0,0,0,0.36)",
+                      margin: "2px 0 0",
+                      padding: "0 10px 4px",
+                    }}>
+                      {timeStr} ✓✓
+                    </p>
+                  </Bubble>
+                ); })()}
 
-                {imageGrid.length > 0 && (
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: gridCols,
-                    gap: "2px",
-                    borderRadius: "5px 5px 0 0",
-                    overflow: "hidden",
-                  }}>
-                    {imageGrid.map((url, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={i}
-                        src={url}
-                        alt=""
-                        style={{
-                          width: "100%",
-                          height: `${imageHeight}px`,
-                          objectFit: "cover",
-                          display: "block",
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {truncatedBody && (
-                  <p style={{
-                    fontSize: "12px",
-                    color: "#1a1a1a",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    lineHeight: 1.45,
-                    margin: 0,
-                    padding: imageGrid.length > 0 ? "6px 7px 0" : "0",
-                  }}>
-                    {truncatedBody}
-                  </p>
-                )}
-
-                <p style={{
-                  textAlign: "right",
-                  fontSize: "10px",
-                  color: "rgba(0,0,0,0.36)",
-                  margin: "2px 0 0",
-                  padding: imageGrid.length > 0 ? "0 7px" : "0",
-                }}>
-                  {timeStr} ✓✓
-                </p>
+                {/* Image bubbles after */}
+                {imageGrid.map((url, i) => { const isLast = ++bubbleIndex === totalBubbles; return (
+                  <Bubble key={i} isLast={isLast}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      style={{
+                        width: "100%",
+                        height: `${imageHeight}px`,
+                        objectFit: "cover",
+                        display: "block",
+                        borderRadius: "5px 5px 0 0",
+                      }}
+                    />
+                    <p style={{
+                      textAlign: "right",
+                      fontSize: "10px",
+                      color: "rgba(0,0,0,0.36)",
+                      margin: 0,
+                      padding: "2px 7px 4px",
+                    }}>
+                      {timeStr} ✓✓
+                    </p>
+                  </Bubble>
+                ); })}
               </div>
             ) : (
               <div style={{

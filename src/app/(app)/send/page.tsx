@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { WhatsAppPreview } from "@/components/WhatsAppPreview";
 
 type Status = "PENDING" | "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED" | "CANCELLED";
 type Phase = "form" | "sending" | "done" | "cancelled";
@@ -68,7 +69,6 @@ export default function SendPage() {
     loadTemplates();
   }, [loadLists, loadTemplates]);
 
-  // Countdown tick
   useEffect(() => {
     if (countdown === null || countdown <= 0) return;
     const t = setTimeout(() => setCountdown((c) => (c !== null && c > 0 ? c - 1 : null)), 1000);
@@ -175,110 +175,116 @@ export default function SendPage() {
           </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-lg">
-          <form onSubmit={handleSend} className="space-y-5">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                Lista de destinatarios
-              </label>
-              <select
-                value={listId}
-                onChange={(e) => setListId(e.target.value)}
-                required
-                className={inputCls}
-              >
-                <option value="">Elegir una lista…</option>
-                {lists.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} — {l._count.members} contactos
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {templates.length > 0 && (
+        <div className="flex gap-10 items-start">
+          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <form onSubmit={handleSend} className="space-y-5">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                  Plantilla (opcional)
+                  Lista de destinatarios
                 </label>
                 <select
+                  value={listId}
+                  onChange={(e) => setListId(e.target.value)}
+                  required
                   className={inputCls}
-                  defaultValue=""
-                  onChange={(e) => {
-                    const tpl = templates.find((t) => t.id === e.target.value);
-                    if (tpl) {
-                      setMessage(tpl.body);
-                      setImageUrls(tpl.imageUrls ?? []);
-                    } else {
-                      setImageUrls([]);
-                    }
-                  }}
                 >
-                  <option value="">Elegir plantilla…</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                      {t.imageUrls?.length > 0 ? ` · ${t.imageUrls.length} img` : ""}
+                  <option value="">Elegir una lista…</option>
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} — {l._count.members} contactos
                     </option>
                   ))}
                 </select>
+              </div>
 
-                {imageUrls.length > 0 && (
-                  <div className="mt-2 flex gap-2">
-                    {imageUrls.map((url, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={i}
-                        src={url}
-                        alt=""
-                        className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                      />
+              {templates.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    Plantilla (opcional)
+                  </label>
+                  <select
+                    className={inputCls}
+                    defaultValue=""
+                    onChange={(e) => {
+                      const tpl = templates.find((t) => t.id === e.target.value);
+                      if (tpl) {
+                        setMessage(tpl.body);
+                        setImageUrls(tpl.imageUrls ?? []);
+                      } else {
+                        setImageUrls([]);
+                      }
+                    }}
+                  >
+                    <option value="">Elegir plantilla…</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {t.imageUrls?.length > 0 ? ` · ${t.imageUrls.length} img` : ""}
+                      </option>
                     ))}
-                    <span className="text-xs text-gray-400 self-center">
-                      {imageUrls.length === 1 ? "1 imagen adjunta" : `${imageUrls.length} imágenes adjuntas`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+                  </select>
 
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs font-medium text-gray-500">Mensaje</label>
-                <span className="text-xs text-gray-300 tabular-nums">{message.length} car.</span>
-              </div>
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                required
-                rows={6}
-                className={`${inputCls} resize-none leading-relaxed`}
-                placeholder="Escribí tu mensaje acá…"
-              />
-            </div>
+                  {imageUrls.length > 0 && (
+                    <div className="mt-2 flex gap-2">
+                      {imageUrls.map((url, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={i}
+                          src={url}
+                          alt=""
+                          className="w-14 h-14 rounded-lg object-cover border border-gray-200"
+                        />
+                      ))}
+                      <span className="text-xs text-gray-400 self-center">
+                        {imageUrls.length === 1 ? "1 imagen adjunta" : `${imageUrls.length} imágenes adjuntas`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {selectedList && (
-              <div className="bg-accent-muted rounded-lg px-4 py-3 text-sm text-green-800">
-                Se enviará a{" "}
-                <strong>{selectedList._count.members} contactos</strong> de la lista &ldquo;
-                {selectedList.name}&rdquo;.
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-medium text-gray-500">Mensaje</label>
+                  <span className="text-xs text-gray-300 tabular-nums">{message.length} car.</span>
+                </div>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  required
+                  rows={6}
+                  className={`${inputCls} resize-none leading-relaxed`}
+                  placeholder="Escribí tu mensaje acá…"
+                />
               </div>
-            )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-600">
-                {error}
-              </div>
-            )}
+              {selectedList && (
+                <div className="bg-accent-muted rounded-lg px-4 py-3 text-sm text-green-800">
+                  Se enviará a{" "}
+                  <strong>{selectedList._count.members} contactos</strong> de la lista &ldquo;
+                  {selectedList.name}&rdquo;.
+                </div>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-accent hover:bg-accent-dark text-white py-2.5 rounded-lg font-medium text-sm transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Iniciando…" : "Enviar campaña"}
-            </button>
-          </form>
+              {error && (
+                <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-accent hover:bg-accent-dark text-white py-2.5 rounded-lg font-medium text-sm transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Iniciando…" : "Enviar campaña"}
+              </button>
+            </form>
+          </div>
+
+          <div className="hidden lg:block flex-shrink-0 pt-2">
+            <WhatsAppPreview body={message} imageUrls={imageUrls} label="Vista previa" />
+          </div>
         </div>
       </div>
     );
@@ -292,6 +298,7 @@ export default function SendPage() {
   const pendingCount = contacts.filter(
     (c) => c.status === "PENDING" || c.status === "SENDING"
   ).length;
+  const progressPct = contacts.length > 0 ? (sentCount / contacts.length) * 100 : 0;
 
   return (
     <div>
@@ -319,99 +326,100 @@ export default function SendPage() {
         )}
       </div>
 
-      {/* Progress card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-        <div className="flex items-end gap-8">
-          <div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Enviados</p>
-            <p className="text-3xl font-semibold text-gray-900 tabular-nums mt-1">{sentCount}</p>
+      <div className="flex gap-8 items-start">
+        <div className="flex-1 min-w-0">
+          {/* Progress card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+            <div className="flex items-end gap-8">
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Enviados</p>
+                <p className="text-4xl font-bold text-gray-900 tabular-nums mt-1">{sentCount}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Pendientes</p>
+                <p className="text-4xl font-bold text-gray-300 tabular-nums mt-1">{pendingCount}</p>
+              </div>
+              {isSending && countdown !== null && countdown > 0 && (
+                <div className="ml-auto text-right">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Próximo en</p>
+                  <p className="text-4xl font-bold text-accent tabular-nums mt-1">{countdown}s</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-700"
+                style={{
+                  width: `${progressPct}%`,
+                  boxShadow: progressPct > 0 ? "0 0 10px rgba(34,194,129,0.45)" : "none",
+                }}
+              />
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Pendientes</p>
-            <p className="text-3xl font-semibold text-gray-400 tabular-nums mt-1">{pendingCount}</p>
-          </div>
-          {isSending && countdown !== null && countdown > 0 && (
-            <div className="ml-auto text-right">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Próximo en</p>
-              <p className="text-3xl font-semibold text-accent tabular-nums mt-1">{countdown}s</p>
+
+          {/* Cancel / skip actions */}
+          {isSending && (
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={handleSkip}
+                className="px-4 py-2.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                Saltar siguiente
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                Cancelar envío
+              </button>
+            </div>
+          )}
+
+          {/* Contact list */}
+          {contacts.length === 0 ? (
+            <div className="flex justify-center pt-8">
+              <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="divide-y divide-gray-50">
+                {contacts.map((c) => {
+                  const cfg = statusConfig[c.status];
+                  return (
+                    <div
+                      key={c.id}
+                      className="flex items-center px-5 py-3.5 gap-4 hover:bg-gray-50/50 transition-colors duration-100"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0 text-accent font-semibold text-xs">
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900">{c.name}</div>
+                        <div className="text-xs text-gray-400 font-mono mt-0.5">{c.phone}</div>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.cls}`}
+                      >
+                        {cfg.spinner ? (
+                          <span className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                        ) : (
+                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                        )}
+                        {cfg.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="mt-4 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-accent rounded-full transition-all duration-500"
-            style={{
-              width:
-                contacts.length > 0
-                  ? `${(sentCount / contacts.length) * 100}%`
-                  : "0%",
-            }}
-          />
+        {/* Phone preview — sticky alongside the contact list */}
+        <div className="hidden lg:block flex-shrink-0 sticky top-8">
+          <WhatsAppPreview body={message} imageUrls={imageUrls} label="Mensaje enviado" />
         </div>
-      </div>
-
-      {/* Cancel / skip actions */}
-      {isSending && (
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={handleSkip}
-            className="px-4 py-2.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
-          >
-            Saltar siguiente
-          </button>
-          <button
-            onClick={handleCancel}
-            className="px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-          >
-            Cancelar envío
-          </button>
-        </div>
-      )}
-
-      {/* Contact list */}
-      {contacts.length === 0 ? (
-        <div className="flex justify-center pt-8">
-          <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-          <div className="divide-y divide-gray-50">
-            {contacts.map((c) => {
-              const cfg = statusConfig[c.status];
-              return (
-                <div
-                  key={c.id}
-                  className="flex items-center px-5 py-3.5 gap-4 hover:bg-gray-50/50 transition-colors duration-100"
-                >
-                  <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0 text-accent font-semibold text-xs">
-                    {c.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900">{c.name}</div>
-                    <div className="text-xs text-gray-400 font-mono mt-0.5">{c.phone}</div>
-                  </div>
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.cls}`}
-                  >
-                    {cfg.spinner ? (
-                      <span className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-                    ) : (
-                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                    )}
-                    {cfg.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Message preview */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Mensaje</p>
-        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{message}</p>
       </div>
     </div>
   );
