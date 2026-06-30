@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 
 export async function PUT(
   req: Request,
@@ -12,15 +12,13 @@ export async function PUT(
 
   const { id } = await params;
   const { name, phone } = await req.json();
+  const uid = session.user.id;
 
-  const contact = await prisma.contact.updateMany({
-    where: { id, userId: session.user.id },
-    data: { name, phone },
-  });
+  const ref = db.doc(`users/${uid}/contacts/${id}`);
+  const snap = await ref.get();
+  if (!snap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (contact.count === 0) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  await ref.update({ name, phone, updatedAt: new Date() });
   return NextResponse.json({ ok: true });
 }
 
@@ -32,6 +30,7 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.contact.deleteMany({ where: { id, userId: session.user.id } });
+  const uid = session.user.id;
+  await db.doc(`users/${uid}/contacts/${id}`).delete();
   return NextResponse.json({ ok: true });
 }

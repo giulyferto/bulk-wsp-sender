@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { adminAuth, db } from "@/lib/firebase";
 
 export async function POST(req: Request) {
   const { email, password } = await req.json();
   if (!email || !password) {
     return NextResponse.json({ error: "Email and password required" }, { status: 400 });
   }
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
+
+  try {
+    await adminAuth.getUserByEmail(email);
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+  } catch {
+    // user not found — proceed
   }
-  const passwordHash = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({ data: { email, passwordHash } });
-  return NextResponse.json({ id: user.id, email: user.email }, { status: 201 });
+
+  const userRecord = await adminAuth.createUser({ email, password });
+  await db.doc(`users/${userRecord.uid}`).set({ email, createdAt: new Date() });
+  return NextResponse.json({ id: userRecord.uid, email }, { status: 201 });
 }

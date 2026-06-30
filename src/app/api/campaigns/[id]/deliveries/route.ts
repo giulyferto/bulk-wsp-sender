@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 
 export async function GET(
   _req: Request,
@@ -11,20 +11,40 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const campaign = await prisma.campaign.findUnique({
-    where: { id },
-    include: {
-      list: { select: { userId: true } },
-      deliveries: {
-        include: { contact: { select: { name: true, phone: true } } },
-        orderBy: { contact: { name: "asc" } },
-      },
-    },
+  const uid = session.user.id;
+
+  const campaignSnap = await db.doc(`users/${uid}/campaigns/${id}`).get();
+  if (!campaignSnap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const campaignData = campaignSnap.data()!;
+
+  const listSnap = await db.doc(`users/${uid}/lists/${campaignData.listId}`).get();
+  const listData = listSnap.data();
+
+  const deliveriesSnap = await db
+    .collection(`users/${uid}/campaigns/${id}/deliveries`)
+    .get();
+
+  const deliveries = await Promise.all(
+    deliveriesSnap.docs.map(async (d) => {
+      const data = d.data();
+      const contactSnap = await db.doc(`users/${uid}/contacts/${data.contactId}`).get();
+      const contact = contactSnap.data() ?? { name: "Unknown", phone: "" };
+      return {
+        id: d.id,
+        status: data.status,
+        waMessageId: data.waMessageId ?? null,
+        contact: { name: contact.name, phone: contact.phone },
+      };
+    })
+  );
+
+  deliveries.sort((a, b) => a.contact.name.localeCompare(b.contact.name));
+
+  return NextResponse.json({
+    id: campaignSnap.id,
+    ...campaignData,
+    list: { name: listData?.name ?? "" },
+    deliveries,
   });
-
-  if (!campaign || campaign.list.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  return NextResponse.json(campaign);
 }

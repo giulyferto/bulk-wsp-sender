@@ -1,18 +1,20 @@
 import type { AuthenticationState } from "@whiskeysockets/baileys";
 import { BufferJSON, initAuthCreds } from "@whiskeysockets/baileys";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 
 export async function loadDatabaseAuthState(
   userId: string
 ): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
-  const row = await prisma.whatsappSession.findUnique({ where: { userId } });
+  const ref = db.doc(`whatsappSessions/${userId}`);
+  const snap = await ref.get();
+  const data = snap.data();
 
-  const creds: AuthenticationState["creds"] = row?.creds
-    ? JSON.parse(JSON.stringify(row.creds), BufferJSON.reviver)
+  const creds: AuthenticationState["creds"] = data?.creds
+    ? JSON.parse(JSON.stringify(data.creds), BufferJSON.reviver)
     : initAuthCreds();
 
-  const keys: Record<string, Record<string, unknown>> = row?.keys
-    ? JSON.parse(JSON.stringify(row.keys), BufferJSON.reviver)
+  const keys: Record<string, Record<string, unknown>> = data?.keys
+    ? JSON.parse(JSON.stringify(data.keys), BufferJSON.reviver)
     : {};
 
   const state: AuthenticationState = {
@@ -20,12 +22,12 @@ export async function loadDatabaseAuthState(
     keys: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       get(type, ids): any {
-        const data: Record<string, unknown> = {};
+        const result: Record<string, unknown> = {};
         for (const id of ids) {
           const val = keys[type]?.[id];
-          if (val) data[id] = val;
+          if (val) result[id] = val;
         }
-        return data;
+        return result;
       },
       set(data) {
         for (const [type, values] of Object.entries(data)) {
@@ -39,11 +41,7 @@ export async function loadDatabaseAuthState(
   const saveCreds = async () => {
     const credsJson = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
     const keysJson = JSON.parse(JSON.stringify(keys, BufferJSON.replacer));
-    await prisma.whatsappSession.upsert({
-      where: { userId },
-      create: { userId, creds: credsJson, keys: keysJson },
-      update: { creds: credsJson, keys: keysJson },
-    });
+    await ref.set({ creds: credsJson, keys: keysJson, updatedAt: new Date() }, { merge: true });
   };
 
   return { state, saveCreds };

@@ -1,20 +1,17 @@
 # massive-wsp-messages
 
-WhatsApp mass messaging PoC built with Next.js 15, Prisma 7, Baileys, and PostgreSQL.
+WhatsApp mass messaging PoC built with Next.js 15, Firebase, Baileys.
 
 ## Dev setup
 
 ```bash
-# 1. Start the database (port 5433 to avoid conflicts)
-docker compose up db -d
-
-# 2. Install dependencies
+# 1. Install dependencies
 npm install
 
-# 3. Run migrations
-npx prisma migrate dev
+# 2. Copy env file and fill in Firebase credentials (see below)
+cp .env.local.example .env.local
 
-# 4. Start dev server
+# 3. Start dev server
 npm run dev
 # → http://localhost:3000
 ```
@@ -25,48 +22,61 @@ npm run dev
 |---|---|---|
 | Framework | Next.js 15 App Router | Full-stack; API routes + React UI in one process |
 | WhatsApp | @whiskeysockets/baileys 7.x | Pure WebSocket, no Puppeteer; emits QR and delivery receipt events |
-| ORM | Prisma 7 | Uses new `prisma.config.ts` instead of `url` in schema |
-| DB adapter | @prisma/adapter-pg + pg | Required in Prisma 7 for direct Postgres connections |
-| Auth | next-auth v4 | Credentials provider; JWT sessions |
-| Passwords | bcryptjs | Pure JS, no native bindings |
+| Auth | next-auth v4 | Credentials provider; JWT sessions; verifies via Firebase Auth REST API |
+| Database | Firebase Firestore | All user data stored under `users/{uid}/` subcollections |
+| Auth backend | Firebase Admin SDK | User creation, session storage, all server-side Firestore writes |
 | Real-time | SSE (ReadableStream) | QR delivery and message status updates |
 
 ## Key architecture decisions
 
-**Prisma 7 adapter pattern** — Prisma 7 removed the "library" binary engine. Direct Postgres connections now require `@prisma/adapter-pg`. See [src/lib/prisma.ts](src/lib/prisma.ts). The DATABASE_URL goes in `prisma.config.ts` (loaded via dotenv) for migrations, and in `.env.local` for the Next.js runtime.
+**Firebase Admin SDK singleton** — Initialised once on `globalThis` to survive Next.js HMR hot reloads. See [src/lib/firebase.ts](src/lib/firebase.ts).
+
+**Login via Firebase Auth REST API** — The next-auth `authorize` callback calls `accounts:signInWithPassword` with the Web API Key instead of comparing password hashes locally. See [src/lib/auth.ts](src/lib/auth.ts).
 
 **Baileys singleton on globalThis** — Next.js HMR destroys modules on each file save. The Baileys socket and the SSE EventEmitter are both stored on `globalThis` to survive hot reloads in dev. See [src/lib/whatsapp/instance.ts](src/lib/whatsapp/instance.ts).
 
-**DB-backed WhatsApp session** — Baileys auth state (creds + signal keys) is stored as JSON in the `WhatsappSession` table instead of the filesystem. Sessions survive container restarts without a mounted volume. See [src/lib/whatsapp/db-auth-state.ts](src/lib/whatsapp/db-auth-state.ts).
+**Firestore-backed WhatsApp session** — Baileys auth state (creds + signal keys) is stored as JSON in the `whatsappSessions/{uid}` document instead of the filesystem. Sessions survive restarts without a mounted volume. See [src/lib/whatsapp/db-auth-state.ts](src/lib/whatsapp/db-auth-state.ts).
 
-**Phone number format** — Store numbers in E.164 format (`+541155556666`) in the database. When constructing a Baileys JID, strip the `+` and append `@s.whatsapp.net`.
+**Contact lists use memberIds array** — `ContactListMember` join table replaced by a `memberIds: string[]` field on each list document. Acceptable for a PoC.
 
-**Rate limiting** — 1 second sleep between sends in `/api/whatsapp/send`. Personal WhatsApp numbers should stay under ~200 messages/day.
+**Phone number format** — Store numbers in E.164 format (`+541155556666`). When constructing a Baileys JID, strip the `+` and append `@s.whatsapp.net`.
+
+**Rate limiting** — 1.5 second sleep between sends in `/api/whatsapp/send`. Personal WhatsApp numbers should stay under ~200 messages/day.
+
+## Firestore data model
+
+```
+users/{uid}                                          { email, createdAt }
+users/{uid}/contacts/{contactId}                     { name, phone, createdAt, updatedAt }
+users/{uid}/lists/{listId}                           { name, createdAt, memberIds: string[] }
+users/{uid}/campaigns/{campaignId}                   { listId, body, sentAt }
+users/{uid}/campaigns/{campaignId}/deliveries/{id}   { contactId, waMessageId, status, updatedAt }
+whatsappSessions/{uid}                               { creds: {}, keys: {}, updatedAt }
+```
 
 ## Environment variables
 
-Copy `.env.example` to `.env.local`:
+Create `.env.local` with:
 
 ```
-DATABASE_URL=postgresql://wsp:wsp@localhost:5433/wsp
-NEXTAUTH_SECRET=your-secret-here
+NEXTAUTH_SECRET=<random string>
 NEXTAUTH_URL=http://localhost:3000
+
+# Firebase Admin SDK — from Project Settings → Service accounts → Generate new private key
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Firebase Web API Key — from Project Settings → General → Web API Key
+NEXT_PUBLIC_FIREBASE_API_KEY=
 ```
 
-Prisma CLI also reads `.env` (not `.env.local`) via dotenv in `prisma.config.ts`.
+## Firebase console setup (one-time)
 
-## Docker
-
-```bash
-# Dev: only run the DB in Docker
-docker compose up db -d
-
-# Production: full stack
-docker compose up --build
-```
-
-The `app` service uses a multi-stage build. `output: 'standalone'` is set in `next.config.ts`.
+1. Authentication → Sign-in method → **Email/Password** → Enable
+2. Firestore Database → Create database (test mode is fine for a PoC)
+3. Firestore → Indexes → add a collection group index on `deliveries` / `waMessageId` ascending (required for delivery receipt updates — the server will log a link the first time you send a campaign)
 
 ## Apple Silicon note
 
-If building the Docker image on an M-series Mac, add `--platform linux/amd64` to the build command. Baileys' `libsignal` includes platform-specific `.node` prebuilds.
+If building a Docker image on an M-series Mac, add `--platform linux/amd64` to the build command. Baileys' `libsignal` includes platform-specific `.node` prebuilds.

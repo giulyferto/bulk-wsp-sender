@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 
 export async function GET(
   _req: Request,
@@ -11,13 +11,28 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const list = await prisma.contactList.findFirst({
-    where: { id, userId: session.user.id },
-    include: { members: { include: { contact: true } } },
-  });
+  const uid = session.user.id;
 
-  if (!list) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(list);
+  const listSnap = await db.doc(`users/${uid}/lists/${id}`).get();
+  if (!listSnap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const listData = listSnap.data()!;
+  const memberIds: string[] = listData.memberIds ?? [];
+
+  const contacts = memberIds.length
+    ? await Promise.all(
+        memberIds.map(async (contactId) => {
+          const snap = await db.doc(`users/${uid}/contacts/${contactId}`).get();
+          return snap.exists ? { id: snap.id, ...snap.data() } : null;
+        })
+      ).then((results) => results.filter(Boolean))
+    : [];
+
+  return NextResponse.json({
+    id: listSnap.id,
+    ...listData,
+    members: contacts.map((c) => ({ contact: c })),
+  });
 }
 
 export async function DELETE(
@@ -28,6 +43,7 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.contactList.deleteMany({ where: { id, userId: session.user.id } });
+  const uid = session.user.id;
+  await db.doc(`users/${uid}/lists/${id}`).delete();
   return NextResponse.json({ ok: true });
 }

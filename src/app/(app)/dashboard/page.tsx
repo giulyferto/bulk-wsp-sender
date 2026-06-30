@@ -1,17 +1,21 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 import Link from "next/link";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  const [contactCount, listCount, campaignCount] = await Promise.all([
-    prisma.contact.count({ where: { userId: session!.user.id } }),
-    prisma.contactList.count({ where: { userId: session!.user.id } }),
-    prisma.campaign.count({
-      where: { list: { userId: session!.user.id } },
-    }),
+  const uid = session!.user.id;
+
+  const [contactsSnap, listsSnap, campaignsSnap] = await Promise.all([
+    db.collection(`users/${uid}/contacts`).count().get(),
+    db.collection(`users/${uid}/lists`).count().get(),
+    db.collection(`users/${uid}/campaigns`).count().get(),
   ]);
+
+  const contactCount = contactsSnap.data().count;
+  const listCount = listsSnap.data().count;
+  const campaignCount = campaignsSnap.data().count;
 
   return (
     <div>

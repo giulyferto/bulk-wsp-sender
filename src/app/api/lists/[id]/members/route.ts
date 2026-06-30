@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(
   req: Request,
@@ -10,19 +11,15 @@ export async function POST(
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: contactListId } = await params;
+  const { id: listId } = await params;
   const { contactId } = await req.json();
+  const uid = session.user.id;
 
-  // verify list belongs to user
-  const list = await prisma.contactList.findFirst({
-    where: { id: contactListId, userId: session.user.id },
-  });
-  if (!list) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const listSnap = await db.doc(`users/${uid}/lists/${listId}`).get();
+  if (!listSnap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await prisma.contactListMember.upsert({
-    where: { contactId_contactListId: { contactId, contactListId } },
-    create: { contactId, contactListId },
-    update: {},
+  await db.doc(`users/${uid}/lists/${listId}`).update({
+    memberIds: FieldValue.arrayUnion(contactId),
   });
   return NextResponse.json({ ok: true });
 }
@@ -34,16 +31,15 @@ export async function DELETE(
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: contactListId } = await params;
+  const { id: listId } = await params;
   const { contactId } = await req.json();
+  const uid = session.user.id;
 
-  const list = await prisma.contactList.findFirst({
-    where: { id: contactListId, userId: session.user.id },
-  });
-  if (!list) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const listSnap = await db.doc(`users/${uid}/lists/${listId}`).get();
+  if (!listSnap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await prisma.contactListMember.delete({
-    where: { contactId_contactListId: { contactId, contactListId } },
+  await db.doc(`users/${uid}/lists/${listId}`).update({
+    memberIds: FieldValue.arrayRemove(contactId),
   });
   return NextResponse.json({ ok: true });
 }
