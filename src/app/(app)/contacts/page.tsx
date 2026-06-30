@@ -7,6 +7,12 @@ interface Contact {
   phone: string;
 }
 
+const inputCls =
+  "border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors duration-150";
+
+const btnPrimary =
+  "bg-accent hover:bg-accent-dark text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState("");
@@ -23,7 +29,9 @@ export default function ContactsPage() {
     setContacts(await res.json());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function addContact(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +63,7 @@ export default function ContactsPage() {
     const res = await fetch("/api/contacts/import", { method: "POST", body: form });
     const data = await res.json();
     if (!res.ok) {
-      setImportError(data.error ?? "Import failed");
+      setImportError(data.error ?? "Error al importar");
     } else {
       setImportResult(data);
       load();
@@ -71,86 +79,110 @@ export default function ContactsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Contacts</h1>
-      <div className="bg-white border rounded-lg p-4 mb-6 flex flex-col gap-2">
-        <span className="text-sm font-medium">Import from .vcf file</span>
-        <div className="flex gap-3 items-center">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-900">Contactos</h1>
+        <p className="text-sm text-gray-500 mt-1">{contacts.length} contactos guardados</p>
+      </div>
+
+      {/* Import */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <p className="text-sm font-medium text-gray-700 mb-3">Importar desde archivo .vcf</p>
+        <div className="flex gap-3 items-center flex-wrap">
           <input
             ref={fileInputRef}
             type="file"
             accept=".vcf,text/vcard"
             onChange={importVcf}
             disabled={importing}
-            className="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-green-50 file:text-green-700 hover:file:bg-green-100 disabled:opacity-50"
+            className="text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-accent-muted file:text-accent hover:file:bg-green-100 disabled:opacity-50 cursor-pointer"
           />
-          {importing && <span className="text-sm text-gray-500">Importing…</span>}
+          {importing && <span className="text-sm text-gray-400">Importando…</span>}
         </div>
         {importResult && (
-          <p className="text-sm text-green-700">
-            Imported {importResult.imported} of {importResult.total} contacts.
+          <p className="text-sm text-accent mt-2">
+            {importResult.imported} de {importResult.total} contactos importados correctamente.
           </p>
         )}
-        {importError && <p className="text-sm text-red-600">{importError}</p>}
+        {importError && <p className="text-sm text-red-500 mt-2">{importError}</p>}
       </div>
 
-      <form onSubmit={addContact} className="bg-white border rounded-lg p-4 mb-6 flex gap-3 items-end">
-        <div>
-          <label className="block text-sm font-medium mb-1">Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="border rounded px-3 py-2 text-sm"
-            placeholder="Jane Doe"
-          />
+      {/* Add form */}
+      <form onSubmit={addContact} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <p className="text-sm font-medium text-gray-700 mb-3">Agregar contacto</p>
+        <div className="flex gap-3 items-end flex-wrap">
+          <div className="flex-1 min-w-36">
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Nombre</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className={inputCls}
+              placeholder="Jane Doe"
+            />
+          </div>
+          <div className="flex-1 min-w-44">
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Teléfono (E.164)</label>
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              className={`${inputCls} font-mono`}
+              placeholder="+5491155556666"
+            />
+          </div>
+          <button type="submit" disabled={loading} className={btnPrimary}>
+            {loading ? "Guardando…" : "Agregar"}
+          </button>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Phone (E.164)</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-            className="border rounded px-3 py-2 text-sm"
-            placeholder="+5491155556666"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50"
-        >
-          Add contact
-        </button>
       </form>
 
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by name or phone…"
-        className="w-full border rounded-lg px-3 py-2 text-sm mb-4"
-      />
+      {/* Search */}
+      <div className="relative mb-4">
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre o teléfono…"
+          className={`${inputCls} w-full pl-9`}
+        />
+      </div>
 
-      <div className="bg-white border rounded-lg divide-y">
-        {filtered.length === 0 && (
-          <p className="p-4 text-sm text-gray-500">
-            {query ? "No contacts match your search." : "No contacts yet."}
-          </p>
-        )}
-        {filtered.map((c) => (
-          <div key={c.id} className="flex items-center px-4 py-3 gap-4">
-            <div className="flex-1">
-              <div className="font-medium text-sm">{c.name}</div>
-              <div className="text-gray-500 text-sm">{c.phone}</div>
-            </div>
-            <button
-              onClick={() => deleteContact(c.id)}
-              className="text-red-500 text-sm hover:underline"
-            >
-              Delete
-            </button>
+      {/* List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-400">
+            {query ? "Ningún contacto coincide con la búsqueda." : "Todavía no hay contactos. Agregá uno arriba."}
           </div>
-        ))}
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {filtered.map((c) => (
+              <div key={c.id} className="flex items-center px-5 py-3.5 gap-4 hover:bg-gray-50/50 transition-colors duration-100">
+                <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0 text-accent font-semibold text-xs">
+                  {c.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-900">{c.name}</div>
+                  <div className="text-gray-400 text-xs font-mono mt-0.5">{c.phone}</div>
+                </div>
+                <button
+                  onClick={() => deleteContact(c.id)}
+                  className="text-xs text-gray-300 hover:text-red-500 transition-colors font-medium"
+                >
+                  Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

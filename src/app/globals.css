@@ -1,7 +1,32 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-jakarta, system-ui), sans-serif;
+  --font-mono: var(--font-mono-var, "Courier New"), monospace;
+
+  --color-accent: #22c281;
+  --color-accent-dark: #1aab6c;
+  --color-accent-muted: #e6f7f0;
+  --color-sidebar: #0d1117;
+  --color-page: #f3f4f8;
+}
+
 body {
-  background: #ffffff;
-  color: #171717;
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #f3f4f8;
+  color: #111827;
+}
+
+:focus-visible {
+  outline: 2px solid #22c281;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

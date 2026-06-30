@@ -19,35 +19,46 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold text-gray-900">Panel</h1>
+        <p className="text-sm text-gray-500 mt-1">Resumen de tu cuenta</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
         {[
-          { label: "Contacts", count: contactCount, href: "/contacts" },
-          { label: "Lists", count: listCount, href: "/lists" },
-          { label: "Campaigns sent", count: campaignCount, href: "/send" },
+          { label: "Contactos", count: contactCount, href: "/contacts" },
+          { label: "Listas", count: listCount, href: "/lists" },
+          { label: "Campañas enviadas", count: campaignCount, href: "/send" },
         ].map(({ label, count, href }) => (
           <Link
             key={label}
             href={href}
-            className="bg-white rounded-lg border p-6 hover:border-green-500 transition-colors"
+            className="group bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100"
           >
-            <div className="text-3xl font-bold text-green-600">{count}</div>
-            <div className="text-sm text-gray-500 mt-1">{label}</div>
+            <div className="text-4xl font-bold text-accent tabular-nums">{count}</div>
+            <div className="text-sm text-gray-500 mt-1.5 font-medium">{label}</div>
+            <div className="mt-5 flex items-center gap-1 text-xs text-gray-300 group-hover:text-accent transition-colors duration-150">
+              Ver todos
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" />
+              </svg>
+            </div>
           </Link>
         ))}
       </div>
-      <div className="flex gap-4">
+
+      <div className="flex gap-3 flex-wrap">
         <Link
           href="/whatsapp"
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
+          className="bg-accent hover:bg-accent-dark text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150"
         >
-          Connect WhatsApp
+          Conectar WhatsApp
         </Link>
         <Link
           href="/send"
-          className="border border-green-600 text-green-600 px-4 py-2 rounded hover:bg-green-50 text-sm"
+          className="border border-gray-200 bg-white text-gray-700 px-5 py-2.5 rounded-lg text-sm font-medium hover:border-accent hover:text-accent transition-colors duration-150"
         >
-          Send a campaign
+          Enviar campaña
         </Link>
       </div>
     </div>
