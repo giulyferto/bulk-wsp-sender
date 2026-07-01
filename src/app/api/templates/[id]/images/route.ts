@@ -5,6 +5,8 @@ import { db, getStorageBucket } from "@/lib/firebase";
 import { randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

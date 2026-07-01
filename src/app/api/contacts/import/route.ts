@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 
+export const dynamic = "force-dynamic";
+
 interface ParsedContact {
   name: string;
   phone: string;

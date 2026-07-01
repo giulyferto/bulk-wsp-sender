@@ -5,6 +5,8 @@ import { connectWhatsApp, getPairingCode, terminateSocket } from "@/lib/whatsapp
 import { waEmitter } from "@/lib/whatsapp/sse-emitter";
 import { db } from "@/lib/firebase";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 
+export const dynamic = "force-dynamic";
+
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

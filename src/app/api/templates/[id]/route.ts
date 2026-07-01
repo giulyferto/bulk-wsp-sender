@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { db, getStorageBucket } from "@/lib/firebase";
 import { FieldValue } from "firebase-admin/firestore";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }

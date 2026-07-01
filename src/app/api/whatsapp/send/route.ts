@@ -4,6 +4,8 @@ import { getSocket, isConnected } from "@/lib/whatsapp/instance";
 import { db } from "@/lib/firebase";
 import { shouldCancel, shouldSkipContact, clearSignals } from "@/lib/whatsapp/campaign-signals";
 
+export const dynamic = "force-dynamic";
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function randomDelaySecs(): number {
