@@ -1,6 +1,11 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
+import data from "@emoji-mart/data";
 import { WhatsAppPreview } from "@/components/WhatsAppPreview";
+
+const EmojiPicker = dynamic(() => import("@emoji-mart/react"), { ssr: false });
+const MAX_IMAGES = 3;
 
 type Status = "PENDING" | "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED" | "CANCELLED";
 type Phase = "form" | "sending" | "done" | "cancelled";
@@ -141,6 +146,16 @@ export default function SendPage() {
   const [skippingIds, setSkippingIds] = useState<Set<string>>(new Set());
   const [skipConfirmedIds, setSkipConfirmedIds] = useState<Set<string>>(new Set());
 
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [emojiPos, setEmojiPos] = useState<{ top: number; left: number } | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cursorPosRef = useRef<number>(0);
+
   const loadLists = useCallback(async () => {
     const res = await fetch("/api/lists");
     setLists(await res.json());
@@ -165,6 +180,45 @@ export default function SendPage() {
   useEffect(() => {
     if (phase !== "sending") setSelectedIds(new Set());
   }, [phase]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmoji(false);
+      }
+    }
+    if (showEmoji) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showEmoji]);
+
+  useEffect(() => {
+    if (!showEmoji) return;
+    const node = emojiPickerRef.current;
+    const button = emojiButtonRef.current;
+    if (!node || !button) return;
+
+    const margin = 12;
+    function reposition() {
+      const buttonRect = button!.getBoundingClientRect();
+      const pickerRect = node!.getBoundingClientRect();
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+      const spaceBelow = viewportH - buttonRect.bottom;
+      const spaceAbove = buttonRect.top;
+      const openUpward = spaceBelow < pickerRect.height + margin && spaceAbove > spaceBelow;
+      let top = openUpward ? buttonRect.top - pickerRect.height - 6 : buttonRect.bottom + 6;
+      top = Math.min(Math.max(top, margin), Math.max(margin, viewportH - pickerRect.height - margin));
+      let left = buttonRect.left;
+      left = Math.min(Math.max(left, margin), Math.max(margin, viewportW - pickerRect.width - margin));
+      setEmojiPos({ top, left });
+    }
+
+    reposition();
+    const ro = new ResizeObserver(reposition);
+    ro.observe(node);
+    window.addEventListener("resize", reposition);
+    return () => { ro.disconnect(); window.removeEventListener("resize", reposition); };
+  }, [showEmoji]);
 
   function updateStatus(contactId: string, status: Status) {
     setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, status } : c)));
@@ -223,6 +277,10 @@ export default function SendPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!message && imageUrls.length === 0) {
+      setError("Escribí un mensaje o agregá al menos una imagen");
+      return;
+    }
     setLoading(true);
 
     const res = await fetch("/api/whatsapp/send", {
@@ -301,6 +359,53 @@ export default function SendPage() {
     );
   }
 
+  function openEmojiPicker() {
+    cursorPosRef.current = textareaRef.current?.selectionStart ?? message.length;
+    if (!showEmoji && emojiButtonRef.current) {
+      const rect = emojiButtonRef.current.getBoundingClientRect();
+      setEmojiPos({ top: rect.bottom + 6, left: rect.left });
+    }
+    setShowEmoji((v) => !v);
+  }
+
+  function onEmojiSelect(emoji: { native: string }) {
+    const pos = cursorPosRef.current;
+    const next = message.slice(0, pos) + emoji.native + message.slice(pos);
+    setMessage(next);
+    cursorPosRef.current = pos + emoji.native.length;
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = cursorPosRef.current;
+        textareaRef.current.selectionEnd = cursorPosRef.current;
+      }
+    }, 0);
+  }
+
+  async function uploadImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!file.type.startsWith("image/")) { setError("Solo se permiten archivos de imagen"); return; }
+    setUploadingImage(true);
+    setError("");
+    const form = new FormData();
+    form.append("image", file);
+    const res = await fetch("/api/images", { method: "POST", body: form });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error ?? "Error al subir la imagen");
+    } else {
+      const { url } = await res.json();
+      setImageUrls((prev) => [...prev, url]);
+    }
+    setUploadingImage(false);
+  }
+
+  function removeImage(url: string) {
+    setImageUrls((prev) => prev.filter((u) => u !== url));
+  }
+
   const selectedList = lists.find((l) => l.id === listId);
 
   // ── Form ──────────────────────────────────────────────────────────────────
@@ -362,23 +467,6 @@ export default function SendPage() {
                       </option>
                     ))}
                   </select>
-
-                  {imageUrls.length > 0 && (
-                    <div className="mt-2 flex gap-2">
-                      {imageUrls.map((url, i) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={i}
-                          src={url}
-                          alt=""
-                          className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                        />
-                      ))}
-                      <span className="text-xs text-gray-400 self-center">
-                        {imageUrls.length === 1 ? "1 imagen adjunta" : `${imageUrls.length} imágenes adjuntas`}
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -388,13 +476,91 @@ export default function SendPage() {
                   <span className="text-xs text-gray-300 tabular-nums">{message.length} car.</span>
                 </div>
                 <textarea
+                  ref={textareaRef}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  required
+                  onBlur={() => { cursorPosRef.current = textareaRef.current?.selectionStart ?? message.length; }}
+                  onClick={() => { cursorPosRef.current = textareaRef.current?.selectionStart ?? message.length; }}
+                  onKeyUp={() => { cursorPosRef.current = textareaRef.current?.selectionStart ?? message.length; }}
                   rows={6}
                   className={`${inputCls} resize-none leading-relaxed`}
                   placeholder="Escribí tu mensaje acá…"
                 />
+                <div className="flex items-center mt-2">
+                  <button
+                    ref={emojiButtonRef}
+                    type="button"
+                    onClick={openEmojiPicker}
+                    className="text-gray-400 hover:text-yellow-500 transition-colors"
+                    title="Insertar emoji"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="3" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="3" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Images */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-gray-500">
+                    Imágenes <span className="text-gray-300 font-normal">({imageUrls.length}/{MAX_IMAGES})</span>
+                  </label>
+                  {imageUrls.length > 0 && imageUrls.length < MAX_IMAGES && !uploadingImage && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-accent transition-colors"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="10" height="10">
+                        <path d="M8 3v10M3 8h10" />
+                      </svg>
+                      Agregar
+                    </button>
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={uploadImage} />
+                {imageUrls.length === 0 && !uploadingImage ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full border-2 border-dashed border-gray-200 rounded-xl py-6 flex flex-col items-center gap-2 text-gray-400 hover:border-accent hover:text-accent transition-colors"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span className="text-xs">Agregar imagen (opcional)</span>
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {imageUrls.map((url, i) => (
+                      <div key={i} className="relative group rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="w-full h-24 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(url)}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500"
+                        >
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="9" height="9">
+                            <path d="M12 4L4 12M4 4l8 8" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    {uploadingImage && (
+                      <div className="border-2 border-dashed border-gray-200 rounded-xl h-24 flex items-center justify-center bg-gray-50">
+                        <span className="text-xs text-gray-400">Subiendo…</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {selectedList && (
@@ -425,6 +591,31 @@ export default function SendPage() {
             <WhatsAppPreview body={message} imageUrls={imageUrls} label="Vista previa" />
           </div>
         </div>
+
+        {showEmoji && (
+          <div
+            ref={emojiPickerRef}
+            style={{
+              position: "fixed",
+              top: emojiPos?.top ?? 0,
+              left: emojiPos?.left ?? 0,
+              zIndex: 9999,
+              visibility: emojiPos ? "visible" : "hidden",
+              maxHeight: "calc(100vh - 24px)",
+              overflowY: "auto",
+            }}
+            className="shadow-2xl rounded-xl overflow-hidden"
+          >
+            <EmojiPicker
+              data={data}
+              locale="es"
+              onEmojiSelect={onEmojiSelect}
+              theme="light"
+              previewPosition="none"
+              skinTonePosition="none"
+            />
+          </div>
+        )}
       </div>
     );
   }

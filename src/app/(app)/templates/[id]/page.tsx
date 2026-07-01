@@ -116,6 +116,10 @@ export default function TemplateDetailPage() {
 
   function openEmojiPicker() {
     cursorPosRef.current = textareaRef.current?.selectionStart ?? bodyValue.length;
+    if (!showEmoji && emojiButtonRef.current) {
+      const rect = emojiButtonRef.current.getBoundingClientRect();
+      setEmojiPos({ top: rect.bottom + 6, left: rect.left });
+    }
     setShowEmoji((v) => !v);
   }
 
