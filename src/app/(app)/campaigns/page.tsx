@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 
 interface Campaign {
@@ -24,6 +24,8 @@ function ChevronRight() {
     </svg>
   );
 }
+
+const PAGE_SIZE = 20;
 
 function groupByDate(campaigns: Campaign[]): { label: string; items: Campaign[] }[] {
   const today = new Date();
@@ -58,6 +60,8 @@ function groupByDate(campaigns: Campaign[]): { label: string; items: Campaign[] 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/campaigns");
@@ -69,11 +73,28 @@ export default function CampaignsPage() {
     load();
   }, [load]);
 
+  const hasMore = visibleCount < campaigns.length;
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, campaigns.length));
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, campaigns.length]);
+
   if (loading) {
     return <div className="text-sm text-gray-400 pt-8 text-center">Cargando…</div>;
   }
 
-  const groups = groupByDate(campaigns);
+  const groups = groupByDate(campaigns.slice(0, visibleCount));
 
   return (
     <div>
@@ -148,6 +169,12 @@ export default function CampaignsPage() {
               </div>
             </div>
           ))}
+          {hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-xs text-gray-400">
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+              Mostrando {Math.min(visibleCount, campaigns.length)} de {campaigns.length}
+            </div>
+          )}
         </div>
       )}
     </div>

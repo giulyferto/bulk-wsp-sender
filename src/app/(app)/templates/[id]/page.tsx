@@ -44,7 +44,7 @@ export default function TemplateDetailPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [showEmoji, setShowEmoji] = useState(false);
-  const [emojiPos, setEmojiPos] = useState({ top: 0, left: 0 });
+  const [emojiPos, setEmojiPos] = useState<{ top: number; left: number } | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const cursorPosRef = useRef<number>(0);
@@ -74,12 +74,48 @@ export default function TemplateDetailPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showEmoji]);
 
+  // Keeps the picker fully on-screen: flips above the button when there isn't
+  // room below, and clamps so a short viewport never forces the page to scroll
+  // or clips the picker off the bottom/side.
+  useEffect(() => {
+    if (!showEmoji) return;
+    const node = emojiPickerRef.current;
+    const button = emojiButtonRef.current;
+    if (!node || !button) return;
+
+    const margin = 12;
+
+    function reposition() {
+      const buttonRect = button!.getBoundingClientRect();
+      const pickerRect = node!.getBoundingClientRect();
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+
+      const spaceBelow = viewportH - buttonRect.bottom;
+      const spaceAbove = buttonRect.top;
+      const openUpward = spaceBelow < pickerRect.height + margin && spaceAbove > spaceBelow;
+
+      let top = openUpward ? buttonRect.top - pickerRect.height - 6 : buttonRect.bottom + 6;
+      top = Math.min(Math.max(top, margin), Math.max(margin, viewportH - pickerRect.height - margin));
+
+      let left = buttonRect.left;
+      left = Math.min(Math.max(left, margin), Math.max(margin, viewportW - pickerRect.width - margin));
+
+      setEmojiPos({ top, left });
+    }
+
+    reposition();
+    const resizeObserver = new ResizeObserver(reposition);
+    resizeObserver.observe(node);
+    window.addEventListener("resize", reposition);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", reposition);
+    };
+  }, [showEmoji]);
+
   function openEmojiPicker() {
     cursorPosRef.current = textareaRef.current?.selectionStart ?? bodyValue.length;
-    if (emojiButtonRef.current) {
-      const rect = emojiButtonRef.current.getBoundingClientRect();
-      setEmojiPos({ top: rect.bottom + 6, left: rect.left });
-    }
     setShowEmoji((v) => !v);
   }
 
@@ -383,7 +419,15 @@ export default function TemplateDetailPage() {
       {showEmoji && (
         <div
           ref={emojiPickerRef}
-          style={{ position: "fixed", top: emojiPos.top, left: emojiPos.left, zIndex: 9999 }}
+          style={{
+            position: "fixed",
+            top: emojiPos?.top ?? 0,
+            left: emojiPos?.left ?? 0,
+            zIndex: 9999,
+            visibility: emojiPos ? "visible" : "hidden",
+            maxHeight: "calc(100vh - 24px)",
+            overflowY: "auto",
+          }}
           className="shadow-2xl rounded-xl overflow-hidden"
         >
           <EmojiPicker

@@ -130,11 +130,6 @@ export async function POST(req: Request) {
             allSuccess = false;
             await deliveryRef.update({ status: "SKIPPED", updatedAt: new Date() });
             send({ type: "status", contactId: entry.id, status: "SKIPPED" });
-            if (i < entries.length - 1) {
-              const secs = randomDelaySecs();
-              send({ type: "countdown", seconds: secs });
-              await interruptibleSleep(secs * 1000, campaignId);
-            }
             continue;
           }
 

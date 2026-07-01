@@ -7,6 +7,8 @@ interface Contact {
   phone: string;
 }
 
+const PAGE_SIZE = 40;
+
 const inputCls =
   "border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors duration-150";
 
@@ -34,6 +36,8 @@ export default function ContactsPage() {
   const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/contacts");
@@ -152,6 +156,28 @@ export default function ContactsPage() {
     ? contacts.filter((c) => c.name.toLowerCase().includes(query) || c.phone.includes(query))
     : contacts;
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [query]);
+
+  const visible = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, filtered.length));
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, filtered.length]);
+
   return (
     <div>
       <div className="mb-6">
@@ -239,7 +265,7 @@ export default function ContactsPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
-            {filtered.map((c) =>
+            {visible.map((c) =>
               editingId === c.id ? (
                 <form
                   key={c.id}
@@ -296,6 +322,12 @@ export default function ContactsPage() {
                 </div>
               )
             )}
+          </div>
+        )}
+        {hasMore && (
+          <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 border-t border-gray-50 text-xs text-gray-400">
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            Mostrando {visible.length} de {filtered.length}
           </div>
         )}
       </div>
