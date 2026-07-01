@@ -3,7 +3,6 @@ import makeWASocket, {
   type WASocket,
   type WAMessageUpdate,
 } from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
 import { waEmitter } from "./sse-emitter";
 import { loadDatabaseAuthState } from "./db-auth-state";
 import { db } from "@/lib/firebase";
@@ -76,7 +75,7 @@ export async function connectWhatsApp(userId: string, allowReconnect = true): Pr
     }
 
     if (connection === "close") {
-      const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+      const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       if (reason === DisconnectReason.loggedOut) {
         await db.doc(`whatsappSessions/${userId}`).delete();
         globalForWA.waSocket = undefined;
