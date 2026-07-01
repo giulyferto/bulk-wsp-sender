@@ -14,7 +14,7 @@ env:
       - RUNTIME
 
   - variable: NEXTAUTH_URL
-    value: REPLACE_WITH_YOUR_DEPLOYED_URL
+    value: https://bulk-wsp-be--bulk-wsp-sender.us-east4.hosted.app
     availability:
       - RUNTIME
 
