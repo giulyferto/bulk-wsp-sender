@@ -145,6 +145,9 @@ export default function SendPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [skippingIds, setSkippingIds] = useState<Set<string>>(new Set());
   const [skipConfirmedIds, setSkipConfirmedIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
+  const startedRef = useRef(false);
+  const receivedTerminalRef = useRef(false);
 
   const [showEmoji, setShowEmoji] = useState(false);
   const [emojiPos, setEmojiPos] = useState<{ top: number; left: number } | null>(null);
@@ -180,6 +183,12 @@ export default function SendPage() {
   useEffect(() => {
     if (phase !== "sending") setSelectedIds(new Set());
   }, [phase]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -245,6 +254,7 @@ export default function SendPage() {
   function handleEvent(event: Record<string, unknown>) {
     switch (event.type) {
       case "start":
+        startedRef.current = true;
         setCampaignId(event.campaignId as string);
         setContacts(event.contacts as ContactEntry[]);
         setPhase("sending");
@@ -264,12 +274,20 @@ export default function SendPage() {
         setCountdownTotal(event.seconds as number);
         break;
       case "done":
+        receivedTerminalRef.current = true;
         setCountdown(null);
         setPhase("done");
         break;
       case "cancelled":
+        receivedTerminalRef.current = true;
         setCountdown(null);
         setPhase("cancelled");
+        break;
+      case "error":
+        receivedTerminalRef.current = true;
+        setCountdown(null);
+        setToast((event.message as string) || "Ocurrió un error en el servidor durante el envío.");
+        setPhase("done");
         break;
     }
   }
@@ -277,11 +295,14 @@ export default function SendPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setToast(null);
     if (!message && imageUrls.length === 0) {
       setError("Escribí un mensaje o agregá al menos una imagen");
       return;
     }
     setLoading(true);
+    startedRef.current = false;
+    receivedTerminalRef.current = false;
 
     const res = await fetch("/api/whatsapp/send", {
       method: "POST",
@@ -318,6 +339,18 @@ export default function SendPage() {
       }
     } catch (err) {
       console.error("[SSE] stream error:", err);
+    }
+
+    if (!receivedTerminalRef.current) {
+      if (startedRef.current) {
+        setCountdown(null);
+        setPhase("done");
+        setToast(
+          "Se perdió la conexión con el servidor durante el envío. Revisá el estado de la campaña antes de reintentar."
+        );
+      } else {
+        setError("Se perdió la conexión con el servidor antes de iniciar el envío. Intentá de nuevo.");
+      }
     }
 
     setLoading(false);
@@ -407,6 +440,24 @@ export default function SendPage() {
   }
 
   const selectedList = lists.find((l) => l.id === listId);
+
+  const toastNode = toast && (
+    <div className="fixed bottom-6 left-0 right-0 lg:left-56 flex justify-center z-40 px-4 pointer-events-none">
+      <div className="pointer-events-auto flex items-start gap-3 bg-red-600 text-white rounded-xl shadow-lg px-4 py-3 max-w-md animate-[slide-up_0.2s_ease-out]">
+        <FailedIcon />
+        <span className="text-sm font-medium flex-1">{toast}</span>
+        <button
+          onClick={() => setToast(null)}
+          className="text-white/70 hover:text-white flex-shrink-0"
+          aria-label="Cerrar aviso"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="12" height="12">
+            <path d="M12 4L4 12M4 4l8 8" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
 
   // ── Form ──────────────────────────────────────────────────────────────────
   if (phase === "form") {
@@ -616,6 +667,7 @@ export default function SendPage() {
             />
           </div>
         )}
+        {toastNode}
       </div>
     );
   }
@@ -856,6 +908,7 @@ export default function SendPage() {
           </div>
         </div>
       )}
+      {toastNode}
     </div>
   );
 }

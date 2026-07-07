@@ -100,14 +100,18 @@ export async function connectWhatsApp(userId: string, allowReconnect = true): Pr
     for (const { key, update } of updates) {
       if (update.status != null && key.id) {
         const dbStatus = mapStatus(update.status as number);
-        const snap = await db
-          .collectionGroup("deliveries")
-          .where("waMessageId", "==", key.id)
-          .get();
-        for (const doc of snap.docs) {
-          if (doc.ref.path.startsWith(`users/${uid}/`)) {
-            await doc.ref.update({ status: dbStatus, updatedAt: new Date() });
+        try {
+          const snap = await db
+            .collectionGroup("deliveries")
+            .where("waMessageId", "==", key.id)
+            .get();
+          for (const doc of snap.docs) {
+            if (doc.ref.path.startsWith(`users/${uid}/`)) {
+              await doc.ref.update({ status: dbStatus, updatedAt: new Date() });
+            }
           }
+        } catch (err) {
+          console.error("[messages.update] failed to persist delivery status:", err);
         }
         waEmitter.emit("delivery", { messageId: key.id, status: dbStatus });
       }

@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
   "apphosting": {
     "backendId": "bulk-wsp-be",
     "rootDir": "/",
