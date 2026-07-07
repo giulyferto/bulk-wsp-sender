@@ -1,12 +1,13 @@
 {
-  "indexes": [
+  "indexes": [],
+  "fieldOverrides": [
     {
       "collectionGroup": "deliveries",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "waMessageId", "order": "ASCENDING" }
+      "fieldPath": "waMessageId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }

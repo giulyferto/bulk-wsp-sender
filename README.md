@@ -51,11 +51,11 @@ Abrir [http://localhost:3000](http://localhost:3000) en el navegador.
 
 1. **Authentication** → Sign-in method → habilitar **Email/Password**
 2. **Firestore Database** → crear la base (modo de prueba está bien para un PoC)
-3. **Índices de Firestore** — la actualización de estado de entrega hace una consulta de tipo *collection group* sobre `deliveries` / `waMessageId`, que requiere un índice compuesto. Desplegarlo con:
+3. **Índices de Firestore** — la actualización de estado de entrega hace una consulta de tipo *collection group* sobre `deliveries` / `waMessageId`. Firestore ya mantiene un índice de campo simple para `waMessageId`, pero por defecto con alcance `COLLECTION`; hay que ampliarlo a `COLLECTION_GROUP` (esto se hace con un *field override*, no con un índice compuesto). Desplegarlo con:
    ```bash
    firebase deploy --only firestore:indexes
    ```
-   (definido en [firestore.indexes.json](firestore.indexes.json)). Si el índice no existe, el envío de campañas puede fallar a mitad de camino — ver la nota en "Problemas conocidos" más abajo.
+   (definido en [firestore.indexes.json](firestore.indexes.json)). Si el override no existe, el envío de campañas puede fallar a mitad de camino — ver la nota en "Problemas conocidos" más abajo.
 
 ## Flujo de uso
 
