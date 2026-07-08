@@ -40,6 +40,15 @@ export default function WhatsAppPage() {
     return () => es.close();
   }, []);
 
+  // Safety net: if we're stuck in "connecting" for too long (e.g. a dropped
+  // SSE message), fall back to "close" so the buttons unlock and the user
+  // can retry instead of being stuck forever.
+  useEffect(() => {
+    if (status !== "connecting") return;
+    const t = setTimeout(() => setStatus("close"), 90_000);
+    return () => clearTimeout(t);
+  }, [status]);
+
   async function handlePairCode(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);

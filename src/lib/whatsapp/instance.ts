@@ -11,7 +11,16 @@ const globalForWA = globalThis as unknown as {
   waSocket: WASocket | undefined;
   waUserId: string | undefined;
   waConnectionState: "open" | "close" | "connecting";
+  waReconnectAttempts: number;
 };
+
+// Caps how many times we auto-reconnect a socket that has never reached "open".
+// Without this, a QR/pairing attempt that never completes (expired QR, phone
+// offline, etc.) retries instantly forever and the UI stays stuck showing
+// "Conectando…" since the buttons are disabled while status === "connecting".
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 
 type DeliveryStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
 
@@ -66,6 +75,7 @@ export async function connectWhatsApp(userId: string, allowReconnect = true): Pr
       if (connection === "open") {
         wasOpen = true;
         globalForWA.waConnectionState = "open";
+        globalForWA.waReconnectAttempts = 0;
       } else if (connection === "connecting") {
         globalForWA.waConnectionState = "connecting";
       } else if (connection === "close") {
@@ -81,11 +91,37 @@ export async function connectWhatsApp(userId: string, allowReconnect = true): Pr
         globalForWA.waSocket = undefined;
         globalForWA.waUserId = undefined;
         globalForWA.waConnectionState = "close";
+        globalForWA.waReconnectAttempts = 0;
         waEmitter.emit("connection", "loggedOut");
-      } else if (wasOpen || allowReconnect) {
-        // Reconnect if we had a live session before, or if caller allows it.
-        // Always pass true so subsequent reconnects keep auto-reconnecting.
-        connectWhatsApp(userId, true);
+      } else if (reason === DisconnectReason.restartRequired) {
+        // Expected mid-pairing/QR step (WA closes the socket once after saving
+        // creds, before a fresh socket can reach "open"). Always retry this one,
+        // even when allowReconnect=false, but still bounded in case a corrupted
+        // session loops on restartRequired forever instead of ever opening.
+        globalForWA.waReconnectAttempts = (globalForWA.waReconnectAttempts ?? 0) + 1;
+        if (globalForWA.waReconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+          connectWhatsApp(userId, true);
+        } else {
+          globalForWA.waReconnectAttempts = 0;
+        }
+      } else if (wasOpen) {
+        // A previously-live session dropped (e.g. network blip) — keep trying
+        // to restore it indefinitely, with a small delay to avoid a busy loop.
+        setTimeout(() => connectWhatsApp(userId, true), RECONNECT_BASE_DELAY_MS);
+      } else if (allowReconnect) {
+        // Never reached "open" yet. Retry with backoff, but give up after
+        // MAX_RECONNECT_ATTEMPTS so the UI leaves "connecting" and the user
+        // can press "Mostrar QR" / "Obtener código" again.
+        globalForWA.waReconnectAttempts = (globalForWA.waReconnectAttempts ?? 0) + 1;
+        if (globalForWA.waReconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+          const delay = Math.min(
+            RECONNECT_BASE_DELAY_MS * globalForWA.waReconnectAttempts,
+            RECONNECT_MAX_DELAY_MS,
+          );
+          setTimeout(() => connectWhatsApp(userId, true), delay);
+        } else {
+          globalForWA.waReconnectAttempts = 0;
+        }
       }
       // allowReconnect=false and never opened → stay closed; UI shows "Desconectado"
     }
