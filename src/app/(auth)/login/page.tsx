@@ -2,13 +2,16 @@
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, createUserWithEmailAndPassword } from "firebase/auth";
 import { clientAuth, googleProvider } from "@/lib/firebase-client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   async function handleGoogle() {
     setLoading(true);
@@ -25,6 +28,48 @@ export default function LoginPage() {
       }
     } catch {
       setError("No se pudo iniciar sesión con Google");
+      setLoading(false);
+    }
+  }
+
+  async function handleCredentials(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const res = await signIn("credentials", { email, password, redirect: false });
+    if (res?.ok) {
+      router.push("/dashboard");
+    } else {
+      setError("Email o contraseña incorrectos");
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const result = await createUserWithEmailAndPassword(clientAuth, email, password);
+      const idToken = await result.user.getIdToken();
+      const res = await signIn("google-firebase", { idToken, redirect: false });
+      if (res?.ok) {
+        router.push("/dashboard");
+      } else {
+        setError("No se pudo crear la cuenta");
+        setLoading(false);
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "auth/email-already-in-use") {
+        setError("Ese email ya tiene una cuenta");
+      } else if (code === "auth/weak-password") {
+        setError("La contraseña debe tener al menos 6 caracteres");
+      } else if (code === "auth/invalid-email") {
+        setError("Email inválido");
+      } else {
+        setError("No se pudo crear la cuenta");
+      }
       setLoading(false);
     }
   }
@@ -47,14 +92,65 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl p-7 shadow-2xl">
-          <h1 className="text-lg font-semibold text-gray-900 mb-2">Iniciar sesión</h1>
-          <p className="text-sm text-gray-400 mb-6">Usá tu cuenta de Google para continuar</p>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">
+            {mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+          </h1>
+          <p className="text-sm text-gray-400 mb-6">
+            {mode === "login" ? "Ingresá con tu cuenta" : "Registrate con tu email"}
+          </p>
 
           {error && (
             <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2.5 text-sm text-red-600 mb-4">
               {error}
             </div>
           )}
+
+          <form onSubmit={mode === "login" ? handleCredentials : handleRegister} className="space-y-3 mb-4">
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/40"
+            />
+            <input
+              type="password"
+              placeholder="Contraseña"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/40"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-accent text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading
+                ? "Ingresando…"
+                : mode === "login"
+                  ? "Iniciar sesión"
+                  : "Crear cuenta"}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError("");
+            }}
+            className="w-full text-center text-xs text-gray-400 hover:text-accent transition-colors duration-150 mb-4"
+          >
+            {mode === "login" ? "¿No tenés cuenta? Registrate" : "¿Ya tenés cuenta? Iniciá sesión"}
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400">o</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
 
           <button
             onClick={handleGoogle}
