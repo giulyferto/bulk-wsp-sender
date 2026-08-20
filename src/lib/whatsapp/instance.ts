@@ -1,5 +1,6 @@
 import makeWASocket, {
   DisconnectReason,
+  fetchLatestBaileysVersion,
   type WASocket,
   type WAMessageUpdate,
 } from "@whiskeysockets/baileys";
@@ -50,9 +51,11 @@ export async function connectWhatsApp(userId: string, allowReconnect = true): Pr
   }
 
   const { state, saveCreds } = await loadDatabaseAuthState(userId);
+  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     auth: state,
+    version,
     printQRInTerminal: false,
     connectTimeoutMs: 60_000,
     defaultQueryTimeoutMs: 60_000,
